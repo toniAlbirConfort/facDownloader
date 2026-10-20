@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone as dt_timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zipfile import ZipFile
 
 from django.contrib.auth.models import User
@@ -10,7 +10,10 @@ from django.test import TestCase, override_settings
 from downloader.models import DownloadBatch, DownloadItem, InvoiceCandidate, InvoiceDocument, InvoiceSearch, Mailbox
 from django.utils import timezone
 
-from downloader.services import date_range_iso, download_archive_member_name, download_folder_name, run_download_batch, safe_filename
+from downloader.graph import DownloadedFile
+from downloader.imap import ImapClient as RealImapClient
+from downloader.providers import MailAttachment, MailMessage
+from downloader.services import date_range_iso, download_archive_member_name, download_candidate, download_folder_name, run_download_batch, safe_filename
 
 
 class ServiceTests(TestCase):
@@ -29,6 +32,83 @@ class ServiceTests(TestCase):
     def test_filename_cannot_escape_storage(self):
         self.assertEqual(safe_filename("../../factura.pdf"), "factura.pdf")
         self.assertEqual(safe_filename("factura final"), "factura_final.pdf")
+
+    def test_direct_link_download_skips_imap_lookup(self):
+        with TemporaryDirectory() as temporary_root:
+            root = Path(temporary_root)
+            with self.settings(DOWNLOAD_TEMP_ROOT=root / "downloads"):
+                search = InvoiceSearch.objects.create(
+                    requested_by=self.user,
+                    mailbox=self.mailbox,
+                    start_date=date(2026, 8, 1),
+                    end_date=date(2026, 8, 2),
+                    invoice_types=["agua"],
+                )
+                candidate = InvoiceCandidate.objects.create(
+                    search=search,
+                    provider="veolia",
+                    invoice_type="agua",
+                    message_id="message-1",
+                    sender="facturas@example.com",
+                    subject="Factura de agua",
+                    source_links=["https://u59752715.ct.sendgrid.net/factura"],
+                )
+                source_path = root / "source.pdf"
+                source_path.write_bytes(b"%PDF-1.7 test")
+                downloaded = DownloadedFile(source_path, "application/pdf", source_path.stat().st_size)
+
+                with patch("downloader.services.download_url", return_value=downloaded), patch("downloader.services.ImapClient") as imap_client:
+                    document = download_candidate(candidate, self.mailbox)
+
+                self.assertEqual(document.provider, "veolia")
+                imap_client.assert_not_called()
+
+    def test_batch_prefetches_imap_once_for_attachment_candidates(self):
+        with TemporaryDirectory() as temporary_root:
+            root = Path(temporary_root)
+            with self.settings(DOWNLOAD_TEMP_ROOT=root / "downloads"):
+                search = InvoiceSearch.objects.create(
+                    requested_by=self.user,
+                    mailbox=self.mailbox,
+                    start_date=date(2026, 8, 1),
+                    end_date=date(2026, 8, 2),
+                    invoice_types=["agua"],
+                )
+                batch = DownloadBatch.objects.create(requested_by=self.user, search=search)
+                messages = [
+                    MailMessage(
+                        id=f"message-{index}",
+                        internet_message_id="",
+                        sender="facturas@example.com",
+                        subject="Factura de agua",
+                        received_at=None,
+                        body="",
+                        has_attachments=True,
+                        attachments=(MailAttachment(f"factura-{index}.pdf", "application/pdf", b"%PDF-1.7 test"),),
+                    )
+                    for index in (1, 2)
+                ]
+                for message in messages:
+                    candidate = InvoiceCandidate.objects.create(
+                        search=search,
+                        provider="veolia",
+                        invoice_type="agua",
+                        message_id=message.id,
+                        sender=message.sender,
+                        subject=message.subject,
+                    )
+                    DownloadItem.objects.create(batch=batch, candidate=candidate)
+
+                fake_client = MagicMock()
+                fake_client.__enter__.return_value = fake_client
+                fake_client.list_messages.return_value = messages
+                with patch("downloader.services.ImapClient", return_value=fake_client) as imap_client:
+                    imap_client.attachment_file.side_effect = RealImapClient.attachment_file
+                    run_download_batch(batch)
+
+                self.assertEqual(imap_client.call_count, 1)
+                fake_client.list_messages.assert_called_once()
+                self.assertEqual(batch.items.filter(status="downloaded").count(), 2)
 
     def test_download_folder_name_uses_local_date(self):
         search = InvoiceSearch.objects.create(
@@ -81,7 +161,7 @@ class ServiceTests(TestCase):
                     ))
                     DownloadItem.objects.create(batch=batch, candidate=candidate)
 
-                with patch("downloader.services.download_candidate", side_effect=documents):
+                with patch("downloader.services.download_candidate", side_effect=documents), patch("downloader.services._prefetch_imap_messages", return_value=({}, {})):
                     run_download_batch(batch)
 
                 with ZipFile(batch.zip_path) as archive:

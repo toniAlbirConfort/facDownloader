@@ -1,12 +1,14 @@
 import hashlib
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.conf import settings
+from django.db import close_old_connections
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -170,31 +172,93 @@ def is_pdf(downloaded: DownloadedFile) -> bool:
         return source.read(5) == b"%PDF-"
 
 
-def download_candidate(candidate, mailbox) -> InvoiceDocument:
+def download_candidate(
+    candidate,
+    mailbox,
+    message: MailMessage | None = None,
+    imap_prefetched: bool = False,
+) -> InvoiceDocument:
     provider = provider_for(candidate.invoice_type)
-    with ImapClient(mailbox, folder=candidate.folder) as client:
-        messages = client.list_messages(candidate.search.start_date, candidate.search.end_date)
-        message = next((item for item in messages if item.id == candidate.message_id), None)
-        if message:
-            for attachment in message.attachments:
-                if attachment.content_type == "application/pdf" or attachment.name.lower().endswith(".pdf"):
-                    downloaded = client.attachment_file(attachment)
-                    if is_pdf(downloaded):
-                        return persist_file(downloaded, candidate, attachment.name)
 
-    for link in candidate.source_links:
+    # Direct provider links are independent of IMAP. Resolve them first so a
+    # batch does not reopen the mailbox and refetch the date range per item.
+    if candidate.source_links:
         if provider.key == "repsol":
             downloaded = download_repsol_invoice(candidate.source_links)
             if is_pdf(downloaded):
                 return persist_file(downloaded, candidate, f"{candidate.invoice_type}-{candidate.id}.pdf")
             downloaded.path.unlink(missing_ok=True)
-            break
-        downloaded = download_url(link, allowed_hosts=provider.allowed_hosts)
-        if is_pdf(downloaded):
-            return persist_file(downloaded, candidate, f"{candidate.invoice_type}-{candidate.id}.pdf")
-        downloaded.path.unlink(missing_ok=True)
+        else:
+            for link in candidate.source_links:
+                downloaded = download_url(link, allowed_hosts=provider.allowed_hosts)
+                if is_pdf(downloaded):
+                    return persist_file(downloaded, candidate, f"{candidate.invoice_type}-{candidate.id}.pdf")
+                downloaded.path.unlink(missing_ok=True)
+
+    if message is None and not imap_prefetched:
+        with ImapClient(mailbox, folder=candidate.folder) as client:
+            messages = client.list_messages(candidate.search.start_date, candidate.search.end_date)
+            message = next((item for item in messages if item.id == candidate.message_id), None)
+
+    if message:
+        for attachment in message.attachments:
+            if attachment.content_type == "application/pdf" or attachment.name.lower().endswith(".pdf"):
+                downloaded = ImapClient.attachment_file(attachment)
+                if is_pdf(downloaded):
+                    return persist_file(downloaded, candidate, attachment.name)
 
     raise GraphError("El proveedor no entregó un PDF directo; requiere revisión manual, DNI, 2FA o CAPTCHA")
+
+
+def _prefetch_imap_messages(batch: DownloadBatch, items: list[DownloadItem]):
+    folders = {item.candidate.folder for item in items if not item.candidate.source_links}
+    if not folders:
+        return {}, {}
+
+    messages_by_folder: dict[str, dict[str, MailMessage]] = {}
+    errors_by_folder: dict[str, Exception] = {}
+    try:
+        with ImapClient(batch.search.mailbox, auto_select=False) as client:
+            for folder in folders:
+                try:
+                    client.select_folder(folder)
+                    messages_by_folder[folder] = {
+                        message.id: message
+                        for message in client.list_messages(batch.search.start_date, batch.search.end_date)
+                    }
+                except Exception as exc:
+                    errors_by_folder[folder] = exc
+    except Exception as exc:
+        errors_by_folder = {folder: exc for folder in folders}
+    return messages_by_folder, errors_by_folder
+
+
+def _download_item(item: DownloadItem, mailbox, message: MailMessage | None = None, imap_prefetched: bool = False):
+    close_old_connections()
+    try:
+        document = download_candidate(
+            item.candidate,
+            mailbox,
+            message=message,
+            imap_prefetched=imap_prefetched,
+        )
+        return item, document, ""
+    except Exception as exc:
+        return item, None, str(exc)
+    finally:
+        close_old_connections()
+
+
+def _save_download_result(item: DownloadItem, document: InvoiceDocument | None, error: str):
+    if document:
+        item.document = document
+        item.status = "downloaded"
+        item.error = ""
+        item.save(update_fields=["document", "status", "error"])
+    else:
+        item.status = "needs_review"
+        item.error = error
+        item.save(update_fields=["status", "error"])
 
 
 def run_download_batch(batch: DownloadBatch):
@@ -202,16 +266,38 @@ def run_download_batch(batch: DownloadBatch):
     batch.save(update_fields=["status"])
     settings.DOWNLOAD_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
     try:
-        for item in batch.items.select_related("candidate"):
-            try:
-                document = download_candidate(item.candidate, batch.search.mailbox)
-                item.document = document
-                item.status = "downloaded"
-                item.save(update_fields=["document", "status"])
-            except Exception as exc:
-                item.status = "needs_review"
-                item.error = str(exc)
-                item.save(update_fields=["status", "error"])
+        items = list(batch.items.select_related("candidate"))
+        messages_by_folder, errors_by_folder = _prefetch_imap_messages(batch, items)
+        direct_items = [
+            item
+            for item in items
+            if item.candidate.source_links and item.candidate.provider != "repsol"
+        ]
+        serial_items = [item for item in items if item not in direct_items]
+
+        concurrency = max(1, int(getattr(settings, "DOWNLOAD_HTTP_CONCURRENCY", 4)))
+        with ThreadPoolExecutor(max_workers=min(concurrency, len(direct_items) or 1)) as executor:
+            futures = {
+                executor.submit(_download_item, item, batch.search.mailbox): item
+                for item in direct_items
+            }
+            for future in as_completed(futures):
+                item, document, error = future.result()
+                _save_download_result(item, document, error)
+
+        for item in serial_items:
+            folder = item.candidate.folder
+            if not item.candidate.source_links and folder in errors_by_folder:
+                _save_download_result(item, None, str(errors_by_folder[folder]))
+                continue
+            message = messages_by_folder.get(folder, {}).get(item.candidate.message_id)
+            item, document, error = _download_item(
+                item,
+                batch.search.mailbox,
+                message=message,
+                imap_prefetched=not bool(item.candidate.source_links),
+            )
+            _save_download_result(item, document, error)
 
         successful = list(batch.items.filter(status="downloaded").select_related("document"))
         if not successful:
