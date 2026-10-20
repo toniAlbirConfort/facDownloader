@@ -1,3 +1,4 @@
+import codecs
 import email
 import imaplib
 from dataclasses import dataclass
@@ -15,6 +16,21 @@ from .crypto import decrypt
 from .graph import DownloadedFile, GraphError
 from .models import Mailbox, MailboxCredential
 from .providers import MailAttachment, MailMessage
+
+
+CHARSET_ALIASES = {
+    "we8iso8859p1": "iso-8859-1",
+}
+
+
+def decode_payload(payload: bytes, charset: str | None) -> str:
+    normalized = (charset or "").strip().casefold().replace("_", "-")
+    encoding = CHARSET_ALIASES.get(normalized, normalized or "utf-8")
+    try:
+        codecs.lookup(encoding)
+    except LookupError:
+        encoding = "cp1252"
+    return payload.decode(encoding, errors="replace")
 
 
 def decode_mime_header(value: str | None) -> str:
@@ -44,7 +60,7 @@ def part_text(part: Message) -> str:
         return value if isinstance(value, str) else str(value)
     except (LookupError, UnicodeError):
         payload = part.get_payload(decode=True) or b""
-        return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        return decode_payload(payload, part.get_content_charset())
 
 
 def parse_message(uid: str, raw: bytes) -> MailMessage:
