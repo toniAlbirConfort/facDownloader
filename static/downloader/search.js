@@ -9,7 +9,9 @@
   const selectAll = document.getElementById('select-all');
   const downloadButton = document.getElementById('download');
   const mailboxSelect = document.getElementById('mailbox');
+  const folderFilter = document.getElementById('folder-filter');
   const foldersBox = document.getElementById('mailbox-folders');
+  const tableWrap = results?.querySelector('.table-wrap');
   let currentSearch = null;
 
   const invoiceTypes = new Set(['agua', 'luz', 'gas']);
@@ -55,9 +57,23 @@
     results?.setAttribute('aria-busy', String(busy));
   };
 
+  const filterFolders = () => {
+    const query = folderFilter?.value.trim().toLowerCase() || '';
+    const choices = [...(foldersBox?.querySelectorAll('.folder-choice') || [])];
+    let visible = 0;
+    choices.forEach((choice) => {
+      const matches = !query || choice.dataset.folderName.includes(query);
+      choice.hidden = !matches;
+      if (matches) visible += 1;
+    });
+    const empty = foldersBox?.querySelector('.folder-filter-empty');
+    if (empty) empty.hidden = visible > 0;
+  };
+
   const renderFolders = (folders, defaultFolder) => {
     const selectedByDefault = new Set(['INBOX', defaultFolder].filter(Boolean));
-    foldersBox.innerHTML = folders.map((folder) => `<label class="folder-choice"><input class="mailbox-folder" type="checkbox" value="${escapeHtml(folder.name)}"${selectedByDefault.has(folder.name) ? ' checked' : ''}><span><strong>${escapeHtml(folder.name)}</strong>${folder.has_children ? '<small>Contiene subcarpetas</small>' : ''}</span></label>`).join('');
+    foldersBox.innerHTML = `${folders.map((folder) => `<label class="folder-choice" data-folder-name="${escapeHtml(folder.name.toLowerCase())}"><input class="mailbox-folder" type="checkbox" value="${escapeHtml(folder.name)}"${selectedByDefault.has(folder.name) ? ' checked' : ''}><span><strong>${escapeHtml(folder.name)}</strong>${folder.has_children ? '<small>Contiene subcarpetas</small>' : ''}</span></label>`).join('')}<span class="inline-status folder-filter-empty" hidden>No hay carpetas con ese nombre.</span>`;
+    filterFolders();
   };
 
   const loadFolders = async () => {
@@ -69,7 +85,7 @@
       renderFolders(data.folders || [], data.default_folder);
       if (!data.folders?.length) foldersBox.innerHTML = '<span class="inline-status">El buzón no ha devuelto carpetas.</span>';
     } catch (error) {
-      foldersBox.innerHTML = `<label class="folder-choice"><input class="mailbox-folder" type="checkbox" value="INBOX" checked><span><strong>INBOX</strong><small>No se pudieron cargar las subcarpetas</small></span></label><span class="field-error">${escapeHtml(error.message)}</span>`;
+      foldersBox.innerHTML = `<label class="folder-choice" data-folder-name="inbox"><input class="mailbox-folder" type="checkbox" value="INBOX" checked><span><strong>INBOX</strong><small>No se pudieron cargar las subcarpetas</small></span></label><span class="field-error">${escapeHtml(error.message)}</span>`;
     }
   };
 
@@ -92,6 +108,7 @@
       const resultData = await getJson(`/api/searches/${id}/results`);
       results.hidden = false;
       const hasResults = resultData.results.length > 0;
+      if (tableWrap) tableWrap.hidden = !hasResults;
       body.innerHTML = resultData.results.map((item) => `<tr><td class="check-column"><input type="checkbox" class="candidate" value="${escapeHtml(item.id)}" checked aria-label="Seleccionar ${escapeHtml(item.subject)}"></td><td>${escapeHtml(item.invoice_type)}</td><td>${escapeHtml(item.provider)}</td><td>${escapeHtml(item.subject)}<small class="table-subline">${escapeHtml(item.sender)}</small></td><td>${formatDate(item.received_at)}</td><td>${escapeHtml(item.links)}</td></tr>`).join('');
       setEmptyState(!hasResults);
       summary.textContent = hasResults ? `${resultData.results.length} coincidencias · selecciona los documentos que quieres descargar.` : 'No se encontraron mensajes que coincidan con los filtros.';
@@ -228,6 +245,7 @@
   });
 
   mailboxSelect?.addEventListener('change', loadFolders);
+  folderFilter?.addEventListener('input', filterFolders);
   setDefaults();
   loadFolders();
 })();
