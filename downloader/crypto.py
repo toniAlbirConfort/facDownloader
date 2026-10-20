@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 from cryptography.fernet import Fernet
 from django.conf import settings
 

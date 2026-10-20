@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 (() => {
   const body = document.getElementById('library-body'); const empty = document.getElementById('library-empty'); const status = document.getElementById('library-status'); const filter = document.getElementById('library-filter'); let documents = [];
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));

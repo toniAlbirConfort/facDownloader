@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 from django.test import SimpleTestCase, override_settings
 
 from downloader.providers import MailMessage, RepsolProvider, VeoliaProvider, extract_allowed_links

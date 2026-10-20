@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 # FacDownloader
 
 Aplicación interna para localizar y descargar facturas recibidas en buzones Outlook autorizados.

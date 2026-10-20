@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 (() => {
   const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
   const form = document.getElementById('search-form');

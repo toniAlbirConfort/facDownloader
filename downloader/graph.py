@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 import base64
 from dataclasses import dataclass
 from pathlib import Path

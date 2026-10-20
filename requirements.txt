@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 Django>=5.2,<6.0
 gunicorn>=23,<24
 whitenoise>=6.8,<7.0

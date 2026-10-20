@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlparse

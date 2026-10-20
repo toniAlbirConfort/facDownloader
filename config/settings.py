@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 import os
 from pathlib import Path
 from urllib.parse import urlparse

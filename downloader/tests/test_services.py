@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 from datetime import date, datetime, timezone as dt_timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory

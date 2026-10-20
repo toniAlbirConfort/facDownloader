@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse

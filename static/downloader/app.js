@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 (() => {
   const today = document.getElementById('today-label');
   const now = new Date();
