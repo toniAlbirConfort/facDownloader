@@ -1,0 +1,74 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AC-FacDownloader · Centro de operaciones de facturas de Albir Confort.">
+  <link rel="icon" href="{% static 'downloader/favicon.svg' %}" type="image/svg+xml">
+  <title>{% block title %}AC-FacDownloader{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'downloader/app.css' %}?v=20261020-3">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="app-sidebar" aria-label="Navegación principal">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div><strong>AC-FacDownloader</strong><span>Albir Confort · Facturas</span></div>
+      </div>
+      <div class="sidebar-label">Workspace</div>
+      <nav class="primary-nav">
+        <a class="nav-item {% if request.resolver_match.url_name == 'index' %}is-active{% endif %}" href="{% url 'index' %}">
+          <span class="nav-icon nav-icon-grid" aria-hidden="true"></span><span>Resumen</span>
+        </a>
+        <a class="nav-item {% if request.resolver_match.url_name == 'search-page' %}is-active{% endif %}" href="{% url 'search-page' %}">
+          <span class="nav-icon nav-icon-search" aria-hidden="true"></span><span>Nueva búsqueda</span>
+        </a>
+        <a class="nav-item {% if request.resolver_match.url_name == 'library-page' %}is-active{% endif %}" href="{% url 'library-page' %}">
+          <span class="nav-icon nav-icon-folder" aria-hidden="true"></span><span>Pendientes</span>
+        </a>
+      </nav>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-label">Sistema</div>
+      <a class="nav-item" href="{% url 'admin:index' %}">
+        <span class="nav-icon nav-icon-sliders" aria-hidden="true"></span><span>Administración</span>
+      </a>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-status">
+        <span class="status-dot status-dot-success" aria-hidden="true"></span>
+        <div><strong>Servicios operativos</strong><span>Albir Confort · IMAP + cola</span></div>
+      </div>
+      <div class="sidebar-user">
+        <div class="avatar">{{ request.user.username|first|upper }}</div>
+        <div class="user-copy"><strong>{{ request.user.username }}</strong><span>{% if request.user.is_staff %}Administrador{% else %}Operador{% endif %}</span></div>
+        <a class="icon-button" href="{% url 'logout' %}" aria-label="Cerrar sesión" title="Cerrar sesión">↗</a>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu-button" id="mobile-menu" type="button" aria-label="Abrir menú" aria-expanded="false">☰</button>
+        <div class="breadcrumb"><span>Workspace</span><span aria-hidden="true">/</span><strong>{% block breadcrumb %}Resumen{% endblock %}</strong></div>
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot status-dot-success" aria-hidden="true"></span>ONLINE · operativo</span>
+          <span class="topbar-date" id="today-label"></span>
+        </div>
+      </header>
+      <div class="page-wrap">
+        {% block content %}{% endblock %}
+        <footer class="app-footer"><span>AC-FacDownloader</span><span>Albir Confort · Operaciones internas</span></footer>
+      </div>
+    </main>
+  </div>
+  <div class="mobile-nav" aria-label="Navegación móvil">
+    <a class="{% if request.resolver_match.url_name == 'index' %}is-active{% endif %}" href="{% url 'index' %}"><span>⌂</span>Resumen</a>
+    <a class="{% if request.resolver_match.url_name == 'search-page' %}is-active{% endif %}" href="{% url 'search-page' %}"><span>⌕</span>Buscar</a>
+    <a class="{% if request.resolver_match.url_name == 'library-page' %}is-active{% endif %}" href="{% url 'library-page' %}"><span>▣</span>Pendientes</a>
+  </div>
+  <script src="{% static 'downloader/app.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
+

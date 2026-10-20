@@ -1,0 +1,35 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+{% extends "downloader/base.html" %}
+{% block title %}AC-FacDownloader · Resumen{% endblock %}
+{% block content %}
+<section class="page-heading heading-with-action">
+  <div><p class="eyebrow">Albir Confort / Centro de operaciones</p><h1>Resumen</h1><p class="page-description">Localiza, revisa y descarga las facturas de tus buzones autorizados.</p></div>
+  <a class="button button-primary" href="{% url 'search-page' %}"><span aria-hidden="true">＋</span>Nueva búsqueda</a>
+</section>
+
+<section class="bento-grid dashboard-grid" aria-label="Resumen operativo">
+  <article class="module hero-module grid-span-8">
+    <div class="module-kicker"><span class="kicker-icon">⌕</span><span>Flujo principal</span></div>
+    <div class="hero-copy"><div><h2>Encuentra una factura en segundos</h2><p>Selecciona un buzón, acota el periodo y deja que el sistema revise los mensajes autorizados.</p></div><a class="text-link" href="{% url 'search-page' %}">Empezar ahora <span aria-hidden="true">→</span></a></div>
+    <div class="process-rail" aria-label="Pasos del flujo"><div class="process-step is-current"><span>01</span><strong>Buscar</strong><small>Buzón y periodo</small></div><div class="process-line"></div><div class="process-step"><span>02</span><strong>Revisar</strong><small>Coincidencias</small></div><div class="process-line"></div><div class="process-step"><span>03</span><strong>Descargar</strong><small>ZIP temporal</small></div></div>
+  </article>
+
+  <article class="module health-module grid-span-4">
+    <div class="module-header"><div><p class="module-label">Health check / servicios</p><h2>Todo operativo</h2></div><span class="status-icon success" aria-label="Operativo">✓</span></div>
+    <p class="module-note">Los servicios de correo y procesamiento están listos para trabajar.</p><p class="health-timestamp">Última comprobación · <time id="health-check-time">ahora</time></p>
+    <div class="health-list"><div><span class="status-dot status-dot-success"></span><span>Conexión IMAP</span><strong>ONLINE</strong></div><div><span class="status-dot status-dot-success"></span><span>Cola de tareas</span><strong>ONLINE</strong></div></div>
+  </article>
+
+  <article class="module stat-module grid-span-4"><p class="module-label">Búsquedas realizadas</p><div class="stat-value">{{ searches_count }}</div><div class="stat-meta"><span class="trend-neutral">Histórico</span><span>en tu cuenta</span></div></article>
+  <article class="module stat-module grid-span-4"><p class="module-label">Procesos en curso</p><div class="stat-value">{{ running_count }}</div><div class="stat-meta"><span class="status-dot {% if running_count %}status-dot-warning{% else %}status-dot-success{% endif %}"></span><span>{% if running_count %}Requieren seguimiento{% else %}Sin tareas pendientes{% endif %}</span></div></article>
+  <article class="module stat-module grid-span-4"><p class="module-label">Archivos pendientes</p><div class="stat-value">{{ documents_count }}</div><div class="stat-meta"><a class="text-link" href="{% url 'library-page' %}">Revisar descargas <span aria-hidden="true">→</span></a></div></article>
+
+  <article class="module activity-module grid-span-8">
+    <div class="module-header"><div><p class="module-label">Seguimiento</p><h2>Actividad reciente</h2></div><a class="text-link" href="{% url 'search-page' %}">Nueva búsqueda <span aria-hidden="true">→</span></a></div>
+    {% if recent_searches %}<div class="activity-list">{% for search in recent_searches %}<div class="activity-row"><span class="activity-marker {% if search.status == 'completed' %}is-success{% elif search.status == 'failed' %}is-error{% else %}is-progress{% endif %}" aria-hidden="true"></span><div class="activity-main"><strong>Búsqueda #{{ search.id }}</strong><span>{{ search.requested_by.username }} · {{ search.mailbox.name }} · {{ search.start_date|date:"d M Y" }} — {{ search.end_date|date:"d M Y" }}</span></div><span class="status-badge status-{{ search.status }}">{{ search.get_status_display }}</span><span class="activity-count">{{ search.total_found }} hallazgos</span></div>{% endfor %}</div>{% else %}<div class="empty-state compact"><div class="empty-icon">⌕</div><h3>Aún no hay búsquedas</h3><p>Tu actividad aparecerá aquí después de la primera búsqueda.</p><a class="button button-secondary" href="{% url 'search-page' %}">Crear búsqueda</a></div>{% endif %}
+  </article>
+
+  <article class="module mailbox-module grid-span-4"><div class="module-header"><div><p class="module-label">Fuentes disponibles</p><h2>Buzones activos</h2></div><span class="count-badge">{{ active_mailboxes|length }}</span></div>{% if active_mailboxes %}<div class="mailbox-list">{% for mailbox in active_mailboxes %}<div class="mailbox-row"><span class="mailbox-mark">{{ mailbox.name|first|upper }}</span><div><strong>{{ mailbox.name }}</strong><span>{{ mailbox.address }}</span></div><span class="status-dot status-dot-success" title="Activo"></span></div>{% endfor %}</div>{% else %}<div class="empty-state compact"><h3>Sin buzones activos</h3><p>Configúralos desde Administración para empezar.</p></div>{% endif %}</article>
+</section>
+{% endblock %}
+

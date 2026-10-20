@@ -1,3 +1,4 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 # FacDownloader
 
 Aplicación interna para localizar y descargar facturas recibidas en buzones Outlook autorizados.
@@ -45,3 +46,4 @@ python manage.py test
 - Limita el acceso de red del servidor al IMAP autorizado y usa contraseñas específicas del buzón cuando el proveedor las permita.
 - Realiza copias de seguridad de PostgreSQL; los archivos de factura son temporales y no forman parte del respaldo.
 - No intentes automatizar CAPTCHA ni 2FA.
+

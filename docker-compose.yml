@@ -1,0 +1,92 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+services:
+  web:
+    build:
+      context: .
+      args:
+        INSTALL_PORTAL: "false"
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+    ports:
+      - "${FACDOWNLOADER_PORT:-18000}:8000"
+    volumes:
+      - download_data:/data/downloads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      args:
+        INSTALL_PORTAL: "false"
+    command: celery -A config worker --loglevel=INFO --concurrency=2 --queues=celery
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+    volumes:
+      - download_data:/data/downloads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  portal-worker:
+    build:
+      context: .
+      args:
+        INSTALL_PORTAL: "true"
+    command: celery -A config worker --loglevel=INFO --concurrency=1 --queues=portal
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+    volumes:
+      - download_data:/data/downloads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: facdownloader
+      POSTGRES_USER: facdownloader
+      POSTGRES_PASSWORD: facdownloader
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U facdownloader -d facdownloader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  download_data:
+

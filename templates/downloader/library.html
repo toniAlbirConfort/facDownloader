@@ -1,0 +1,11 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+{% extends "downloader/base.html" %}
+{% load static %}
+{% block title %}AC-FacDownloader · Biblioteca{% endblock %}
+{% block breadcrumb %}Descargas pendientes{% endblock %}
+{% block content %}
+<section class="page-heading heading-with-action"><div><p class="eyebrow">Albir Confort / Descargas temporales</p><h1>Descargas pendientes</h1><p class="page-description">Consulta los archivos preparados que todavía no se han entregado al equipo local.</p></div><a class="button button-primary" href="{% url 'search-page' %}"><span aria-hidden="true">＋</span>Nueva búsqueda</a></section>
+<section class="module library-module" aria-labelledby="library-title"><div class="module-header library-toolbar"><div><p class="module-label">Retención mínima</p><h2 id="library-title">Archivos preparados</h2></div><div class="toolbar-controls"><label class="search-control"><span aria-hidden="true">⌕</span><span class="sr-only">Filtrar documentos</span><input id="library-filter" type="search" placeholder="Filtrar por archivo o proveedor"></label><button class="button button-secondary" id="refresh-library" type="button">Actualizar</button></div></div><div id="library-status" class="inline-status" role="status" aria-live="polite"></div><div class="table-wrap"><table><thead><tr><th scope="col">Archivo</th><th scope="col">Proveedor</th><th scope="col">Tipo</th><th scope="col">Tamaño</th><th scope="col">Preparado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead><tbody id="library-body"></tbody></table></div><div id="library-empty" class="empty-state" hidden><div class="empty-icon">▣</div><h3>No hay archivos pendientes</h3><p>Después de entregar una factura, su copia temporal se elimina del servidor.</p><a class="button button-secondary" href="{% url 'search-page' %}">Buscar facturas</a></div></section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'downloader/library.js' %}"></script>{% endblock %}
+

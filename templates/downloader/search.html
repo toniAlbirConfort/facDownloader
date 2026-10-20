@@ -1,0 +1,25 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+{% extends "downloader/base.html" %}
+{% load static %}
+{% block title %}AC-FacDownloader · Nueva búsqueda{% endblock %}
+{% block breadcrumb %}Nueva búsqueda{% endblock %}
+{% block content %}
+<section class="page-heading"><p class="eyebrow">Albir Confort / Flujo de trabajo</p><h1>Nueva búsqueda</h1><p class="page-description">Revisa un buzón autorizado y encuentra facturas por periodo y tipo.</p></section>
+<div class="bento-grid search-grid">
+  <section class="module search-form-module grid-span-7" aria-labelledby="search-title">
+    <div class="module-header"><div><p class="module-label">01 · Configuración</p><h2 id="search-title">Define el alcance</h2></div><span class="step-badge">Paso 1 de 2</span></div>
+    <form id="search-form" class="workflow-form" aria-busy="false">
+      {% csrf_token %}
+      <div class="field-group"><label for="mailbox">Buzón de origen</label><select id="mailbox" required>{% for mailbox in mailboxes %}<option value="{{ mailbox.id }}">{{ mailbox.name }} · {{ mailbox.address }}</option>{% empty %}<option value="">No hay buzones configurados</option>{% endfor %}</select><span class="field-hint">Solo se consultan buzones activos y autorizados.</span></div>
+      <div class="field-grid"><div class="field-group"><label for="start-date">Desde</label><input id="start-date" type="date" required></div><div class="field-group"><label for="end-date">Hasta</label><input id="end-date" type="date" required></div></div>
+      <fieldset class="field-group"><legend>Tipos de factura</legend><div class="choice-grid"><label class="choice-card"><input class="invoice-type" type="checkbox" value="gas" checked><span><strong>Gas</strong><small>Repsol y proveedores</small></span><span class="choice-check">✓</span></label><label class="choice-card"><input class="invoice-type" type="checkbox" value="luz" checked><span><strong>Luz</strong><small>Electricidad</small></span><span class="choice-check">✓</span></label><label class="choice-card"><input class="invoice-type" type="checkbox" value="agua" checked><span><strong>Agua</strong><small>Suministro</small></span><span class="choice-check">✓</span></label></div></fieldset>
+      <div class="form-footer"><span class="form-safe-note"><span class="status-dot status-dot-success"></span>La búsqueda se ejecuta en segundo plano.</span><button class="button button-primary" type="submit">Buscar facturas <span aria-hidden="true">→</span></button></div>
+    </form>
+  </section>
+  <aside class="module guidance-module grid-span-5"><p class="module-label">Qué ocurrirá</p><h2>Una revisión segura y trazable</h2><div class="guidance-list"><div><span class="guidance-number">1</span><div><strong>Conectamos al buzón</strong><p>Usamos la configuración IMAP cifrada del administrador.</p></div></div><div><span class="guidance-number">2</span><div><strong>Analizamos coincidencias</strong><p>Identificamos proveedor, tipo, asunto y enlaces de cada mensaje.</p></div></div><div><span class="guidance-number">3</span><div><strong>Tú decides qué descargar</strong><p>Revisa los resultados antes de preparar el ZIP temporal.</p></div></div></div></aside>
+  <section id="status" class="notice-module grid-span-12" role="status" aria-live="polite" aria-busy="false" hidden></section>
+  <section id="results" class="module results-module grid-span-12" hidden aria-labelledby="results-title" aria-busy="false"><div class="module-header results-header"><div><p class="module-label">02 · Revisión</p><h2 id="results-title">Coincidencias encontradas</h2><p class="module-note" id="results-summary">Selecciona los documentos que quieres descargar.</p></div><div class="results-actions"><button class="button button-secondary" id="select-all" type="button">Seleccionar todo</button><button class="button button-primary" id="download" type="button">Descargar seleccionadas <span aria-hidden="true">↓</span></button></div></div><div class="table-wrap"><table><thead><tr><th scope="col" class="check-column"><span class="sr-only">Seleccionar</span></th><th scope="col">Tipo</th><th scope="col">Proveedor</th><th scope="col">Asunto</th><th scope="col">Recibido</th><th scope="col">Enlaces</th></tr></thead><tbody id="results-body"></tbody></table></div><div id="results-empty" class="empty-state" hidden><div class="empty-icon">⌕</div><h3>No encontramos coincidencias</h3><p>Prueba con otro periodo o revisa que los tipos de factura estén seleccionados.</p></div></section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{% static 'downloader/search.js' %}?v=20261020-3"></script>{% endblock %}
+

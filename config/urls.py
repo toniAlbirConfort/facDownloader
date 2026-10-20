@@ -1,0 +1,19 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+from django.contrib import admin
+from django.contrib.auth import views as auth_views
+from django.urls import include, path
+from django.http import JsonResponse
+
+
+def health(request):
+    return JsonResponse({"status": "ok"})
+
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("accounts/login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
+    path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
+    path("health/", health),
+    path("", include("downloader.urls")),
+]
+

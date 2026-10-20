@@ -1,0 +1,11 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+(() => {
+  const body = document.getElementById('library-body'); const empty = document.getElementById('library-empty'); const status = document.getElementById('library-status'); const filter = document.getElementById('library-filter'); let documents = [];
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+  const formatBytes = (bytes) => { if (!bytes) return '—'; if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; };
+  const formatDate = (value) => value ? new Intl.DateTimeFormat('es-ES', {dateStyle: 'medium'}).format(new Date(value)) : '—';
+  const render = () => { const query = filter.value.trim().toLowerCase(); const visible = documents.filter((item) => [item.file_name, item.provider, item.invoice_type].join(' ').toLowerCase().includes(query)); body.innerHTML = visible.map((item) => `<tr><td><strong>${escapeHtml(item.file_name)}</strong></td><td>${escapeHtml(item.provider)}</td><td>${escapeHtml(item.invoice_type)}</td><td>${formatBytes(item.size_bytes)}</td><td>${formatDate(item.created_at)}</td><td><a class="table-action" href="${escapeHtml(item.download_url)}">Descargar <span aria-hidden="true">↓</span></a></td></tr>`).join(''); empty.hidden = visible.length > 0; if (!visible.length && documents.length && query) { empty.hidden = false; empty.querySelector('h3').textContent = 'Sin resultados'; empty.querySelector('p').textContent = 'Prueba con otro archivo o proveedor.'; } };
+  async function load() { status.textContent = 'Cargando descargas pendientes…'; try { const response = await fetch('/api/documents'); if (!response.ok) throw new Error('No se pudieron cargar las descargas pendientes.'); const data = await response.json(); documents = data.documents || []; status.textContent = documents.length ? `${documents.length} documentos pendientes` : ''; render(); } catch (error) { status.textContent = error.message; body.innerHTML = ''; empty.hidden = true; } }
+  filter?.addEventListener('input', render); document.getElementById('refresh-library')?.addEventListener('click', load); load();
+})();
+

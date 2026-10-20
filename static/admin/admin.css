@@ -1,0 +1,82 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+:root {
+  --ac-admin-ink: #12243a;
+  --ac-admin-muted: #647689;
+  --ac-admin-line: #dfe7ee;
+  --ac-admin-canvas: #f4f7fa;
+  --ac-admin-blue: #2364d2;
+  --ac-admin-blue-dark: #17499f;
+  --ac-admin-teal: #07847b;
+  --ac-admin-font: "IBM Plex Mono", "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+body, input, textarea, select, button { font-family: var(--ac-admin-font); }
+body { color: var(--ac-admin-ink); background: var(--ac-admin-canvas); }
+#header { min-height: 68px; padding: 0 38px; background: #fff; border-bottom: 1px solid var(--ac-admin-line); }
+#branding { display: flex; align-items: center; min-height: 68px; }
+.ac-admin-brand-link { display: inline-flex; align-items: center; gap: 11px; color: var(--ac-admin-ink); text-decoration: none; }
+.ac-admin-brand-link strong, .ac-admin-brand-link small { display: block; }
+.ac-admin-brand-link strong { font-size: 14px; letter-spacing: -.02em; }
+.ac-admin-brand-link small { margin-top: 2px; color: #91a0af; font-size: 10px; font-weight: 500; }
+.ac-admin-mark { display: grid; grid-template-columns: repeat(3, 5px); align-items: end; gap: 3px; width: 23px; height: 23px; padding: 3px; background: var(--ac-admin-ink); border-radius: 6px; }
+.ac-admin-mark i { display: block; height: 8px; background: #fff; border-radius: 2px; }
+.ac-admin-mark i:nth-child(2) { height: 14px; opacity: .82; }
+.ac-admin-mark i:nth-child(3) { height: 10px; opacity: .6; }
+#user-tools { display: flex; align-items: center; gap: 17px; color: var(--ac-admin-muted); font-size: 11px; }
+#user-tools a { color: var(--ac-admin-muted); }
+#user-tools a:hover { color: var(--ac-admin-blue); }
+#user-tools .ac-admin-back-link { color: var(--ac-admin-blue); font-weight: 750; }
+#content { max-width: 1450px; margin: 0 auto; padding: 34px 38px 70px; }
+.breadcrumbs { max-width: 1450px; margin: 0 auto; padding: 0 38px; color: #91a0af; background: transparent; border: 0; font-size: 10px; }
+.breadcrumbs a { color: var(--ac-admin-blue); }
+.ac-admin-dashboard { display: grid; gap: 16px; }
+.ac-admin-hero { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 28px; background: var(--ac-admin-ink); border: 1px solid var(--ac-admin-ink); border-radius: 12px; color: #fff; }
+.ac-admin-eyebrow, .ac-admin-label { margin: 0 0 8px; color: var(--ac-admin-blue); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.ac-admin-hero .ac-admin-eyebrow { color: #91dfd5; }
+.ac-admin-hero h1 { margin: 0; color: #fff; font-size: clamp(27px, 4vw, 42px); letter-spacing: -.06em; line-height: 1; }
+.ac-admin-lede { max-width: 600px; margin: 12px 0 0; color: #b2c1d0; font-size: 13px; }
+.ac-admin-primary { display: inline-flex; align-items: center; gap: 8px; min-height: 39px; padding: 0 14px; color: var(--ac-admin-ink); background: #b7ebe5; border-radius: 7px; font-size: 11px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.ac-admin-primary:hover { background: #d1f3ef; }
+.ac-admin-status-grid, .ac-admin-app-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.ac-admin-status-card { grid-column: span 4; display: grid; gap: 3px; min-height: 114px; padding: 20px; background: #fff; border: 1px solid var(--ac-admin-line); border-radius: 10px; box-shadow: 0 8px 25px rgba(24, 49, 77, .04); }
+.ac-admin-status-card--accent { border-top: 3px solid var(--ac-admin-teal); }
+.ac-admin-status-card .ac-admin-label { color: #91a0af; }
+.ac-admin-status-card strong { font-size: 16px; }
+.ac-admin-status-card small { color: var(--ac-admin-muted); font-size: 10px; }
+.ac-admin-app-card { grid-column: span 6; min-width: 0; padding: 22px; background: #fff; border: 1px solid var(--ac-admin-line); border-radius: 10px; box-shadow: 0 8px 25px rgba(24, 49, 77, .04); }
+.ac-admin-app-heading { display: flex; justify-content: space-between; gap: 18px; align-items: start; padding-bottom: 16px; border-bottom: 1px solid var(--ac-admin-line); }
+.ac-admin-app-heading .ac-admin-label { color: #91a0af; }
+.ac-admin-app-heading h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+.ac-admin-app-link, .ac-admin-add-link { color: var(--ac-admin-blue); font-size: 10px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.ac-admin-app-link:hover, .ac-admin-add-link:hover { color: var(--ac-admin-blue-dark); text-decoration: underline; }
+.ac-admin-model-list { display: grid; }
+.ac-admin-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 62px; border-bottom: 1px solid #edf0f3; }
+.ac-admin-model-row:last-child { border-bottom: 0; }
+.ac-admin-model-row div { min-width: 0; }
+.ac-admin-model-row div a { display: block; overflow: hidden; color: var(--ac-admin-ink); font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.ac-admin-model-row div a:hover { color: var(--ac-admin-blue); }
+.ac-admin-model-row small { display: block; margin-top: 2px; color: #91a0af; font-size: 10px; }
+.ac-admin-add-link { color: var(--ac-admin-teal); }
+.ac-admin-empty, .ac-admin-empty-state p { color: var(--ac-admin-muted); font-size: 11px; }
+.ac-admin-empty-state { grid-column: span 12; padding: 36px; background: #fff; border: 1px dashed #becbd6; border-radius: 10px; text-align: center; }
+.ac-admin-empty-state h2 { margin: 0; font-size: 18px; }
+.ac-admin-empty-state p { margin-bottom: 0; }
+#content-main, #content-related { min-width: 0; }
+#nav-sidebar { font-family: var(--ac-admin-font); }
+@media (max-width: 800px) {
+  #header { padding: 0 18px; }
+  #user-tools { gap: 8px; }
+  #content { padding: 24px 18px 50px; }
+  .breadcrumbs { padding: 0 18px; }
+  .ac-admin-hero { display: block; padding: 22px; }
+  .ac-admin-primary { margin-top: 18px; }
+  .ac-admin-status-card, .ac-admin-app-card { grid-column: span 12; }
+}
+@media (max-width: 520px) {
+  #header { min-height: 60px; }
+  #branding { min-height: 60px; }
+  #user-tools { font-size: 0; }
+  #user-tools .ac-admin-back-link { font-size: 10px; }
+  .ac-admin-brand-link strong { font-size: 12px; }
+}
+

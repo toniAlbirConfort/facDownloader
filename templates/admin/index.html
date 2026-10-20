@@ -1,0 +1,74 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Administración · AC-FacDownloader{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs"><a href="{% url 'admin:index' %}">Administración</a></div>
+{% endblock %}
+
+{% block content %}
+  <div class="ac-admin-dashboard">
+    <header class="ac-admin-hero">
+      <div>
+        <p class="ac-admin-eyebrow">Albir Confort / Control de configuración</p>
+        <h1>Administración</h1>
+        <p class="ac-admin-lede">Gestiona buzones, credenciales y trazabilidad del flujo de facturas.</p>
+      </div>
+      <a class="ac-admin-primary" href="{% url 'index' %}">Volver al panel <span aria-hidden="true">→</span></a>
+    </header>
+
+    <section class="ac-admin-status-grid" aria-label="Estado de administración">
+      <article class="ac-admin-status-card ac-admin-status-card--accent">
+        <span class="ac-admin-label">Área activa</span>
+        <strong>Configuración</strong>
+        <small>Los cambios se aplican al siguiente proceso.</small>
+      </article>
+      <article class="ac-admin-status-card">
+        <span class="ac-admin-label">Acceso</span>
+        <strong>Administrador</strong>
+        <small>Sesión protegida · {{ request.user.username }}</small>
+      </article>
+      <article class="ac-admin-status-card">
+        <span class="ac-admin-label">Retorno rápido</span>
+        <strong>Panel operativo</strong>
+        <small>Buscar y descargar facturas</small>
+      </article>
+    </section>
+
+    <section class="ac-admin-app-grid" aria-label="Módulos de administración">
+      {% for app in app_list %}
+        <article class="ac-admin-app-card">
+          <div class="ac-admin-app-heading">
+            <div>
+              <p class="ac-admin-label">Módulo {{ forloop.counter|stringformat:"02d" }}</p>
+              <h2>{{ app.name }}</h2>
+            </div>
+            {% if app.app_url %}<a class="ac-admin-app-link" href="{{ app.app_url }}">Abrir <span aria-hidden="true">↗</span></a>{% endif %}
+          </div>
+          <div class="ac-admin-model-list">
+            {% for model in app.models %}
+              <div class="ac-admin-model-row">
+                <div>
+                  <a href="{{ model.admin_url }}">{{ model.name }}</a>
+                  <small>{% if model.perms.change or model.perms.add %}Configuración editable{% else %}Consulta{% endif %}</small>
+                </div>
+                {% if model.add_url %}<a class="ac-admin-add-link" href="{{ model.add_url }}">Añadir <span aria-hidden="true">＋</span></a>{% endif %}
+              </div>
+            {% empty %}
+              <p class="ac-admin-empty">No hay modelos disponibles para esta cuenta.</p>
+            {% endfor %}
+          </div>
+        </article>
+      {% empty %}
+        <article class="ac-admin-empty-state">
+          <span class="ac-admin-label">Sin módulos disponibles</span>
+          <h2>No tienes permisos de administración.</h2>
+          <p>Solicita acceso a un administrador para gestionar la configuración.</p>
+        </article>
+      {% endfor %}
+    </section>
+  </div>
+{% endblock %}
+

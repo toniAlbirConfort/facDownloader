@@ -1,0 +1,33 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="{% static 'downloader/favicon.svg' %}" type="image/svg+xml">
+  <title>AC-FacDownloader · Acceso</title>
+  <link rel="stylesheet" href="{% static 'downloader/app.css' %}">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-intro">
+      <div class="brand-lockup"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><strong>AC-FacDownloader</strong><span>Albir Confort · Facturas</span></div></div>
+      <div class="login-message"><p class="eyebrow">Albir Confort / Workspace privado</p><h1>Tus facturas,<br><em>bajo control.</em></h1><p>Un espacio seguro para localizar, revisar y descargar documentos de tus buzones autorizados.</p></div>
+      <div class="login-points"><span><b>01</b> Búsquedas trazables</span><span><b>02</b> Descargas organizadas</span></div>
+    </section>
+    <section class="login-card" aria-labelledby="login-title">
+      <div><p class="eyebrow">Acceso</p><h2 id="login-title">Bienvenido de nuevo</h2><p class="login-help">Introduce tus credenciales para continuar.</p></div>
+      <form method="post" class="login-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="login-error">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="field-group"><label for="id_username">Nombre de usuario</label>{{ form.username }}{% if form.username.errors %}<span class="field-error">{{ form.username.errors|striptags }}</span>{% endif %}</div>
+        <div class="field-group"><label for="id_password">Contraseña</label>{{ form.password }}{% if form.password.errors %}<span class="field-error">{{ form.password.errors|striptags }}</span>{% endif %}</div>
+        <button class="button button-primary" type="submit">Entrar en el workspace <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="login-security"><span class="status-dot status-dot-success"></span> Albir Confort · acceso restringido</p>
+    </section>
+  </main>
+</body>
+</html>
+
