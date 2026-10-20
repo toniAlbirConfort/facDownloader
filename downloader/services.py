@@ -233,8 +233,15 @@ def _prefetch_imap_messages(batch: DownloadBatch, items: list[DownloadItem]):
     return messages_by_folder, errors_by_folder
 
 
-def _download_item(item: DownloadItem, mailbox, message: MailMessage | None = None, imap_prefetched: bool = False):
-    close_old_connections()
+def _download_item(
+    item: DownloadItem,
+    mailbox,
+    message: MailMessage | None = None,
+    imap_prefetched: bool = False,
+    manage_connection: bool = True,
+):
+    if manage_connection:
+        close_old_connections()
     try:
         document = download_candidate(
             item.candidate,
@@ -246,7 +253,8 @@ def _download_item(item: DownloadItem, mailbox, message: MailMessage | None = No
     except Exception as exc:
         return item, None, str(exc)
     finally:
-        close_old_connections()
+        if manage_connection:
+            close_old_connections()
 
 
 def _save_download_result(item: DownloadItem, document: InvoiceDocument | None, error: str):
@@ -296,6 +304,7 @@ def run_download_batch(batch: DownloadBatch):
                 batch.search.mailbox,
                 message=message,
                 imap_prefetched=not bool(item.candidate.source_links),
+                manage_connection=False,
             )
             _save_download_result(item, document, error)
 
