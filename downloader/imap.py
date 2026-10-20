@@ -1,6 +1,8 @@
 import codecs
+import base64
 import email
 import imaplib
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from email.header import decode_header, make_header
@@ -31,6 +33,49 @@ def decode_payload(payload: bytes, charset: str | None) -> str:
     except LookupError:
         encoding = "cp1252"
     return payload.decode(encoding, errors="replace")
+
+
+def decode_modified_utf7(value: str) -> str:
+    """Decode the modified UTF-7 used by IMAP folder names."""
+    decoded = []
+    position = 0
+    while position < len(value):
+        if value[position] != "&":
+            decoded.append(value[position])
+            position += 1
+            continue
+        end = value.find("-", position + 1)
+        if end == -1:
+            decoded.append(value[position:])
+            break
+        encoded = value[position + 1:end]
+        if not encoded:
+            decoded.append("&")
+        else:
+            try:
+                encoded = encoded.replace(",", "/")
+                encoded += "=" * ((4 - len(encoded) % 4) % 4)
+                decoded.append(base64.b64decode(encoded).decode("utf-16-be"))
+            except (ValueError, UnicodeError):
+                decoded.append(value[position:end + 1])
+        position = end + 1
+    return "".join(decoded)
+
+
+def parse_list_folder(value: bytes | str) -> dict | None:
+    line = value.decode("ascii", errors="replace") if isinstance(value, bytes) else value
+    match = re.match(r"^\((?P<flags>[^)]*)\)\s+(?:NIL|\"(?:\\\\.|[^\"])*\")\s+(?P<name>.*)$", line)
+    if not match:
+        return None
+    name = match.group("name").strip()
+    if name.upper() == "NIL":
+        return None
+    if name.startswith('"') and name.endswith('"'):
+        name = re.sub(r"\\(.)", r"\1", name[1:-1])
+    return {
+        "name": decode_modified_utf7(name),
+        "has_children": "\\HasChildren" in match.group("flags"),
+    }
 
 
 def decode_mime_header(value: str | None) -> str:
@@ -102,7 +147,7 @@ def imap_date(value: date) -> str:
 
 
 class ImapClient:
-    def __init__(self, mailbox: Mailbox):
+    def __init__(self, mailbox: Mailbox, folder: str | None = None, auto_select: bool = True):
         try:
             credential = mailbox.imap_credential
         except MailboxCredential.DoesNotExist as exc:
@@ -115,11 +160,24 @@ class ImapClient:
             else:
                 self.connection = imaplib.IMAP4(credential.host, credential.port, timeout=settings.GRAPH_TIMEOUT_SECONDS)
             self.connection.login(credential.username, password)
-            status, _ = self.connection.select(credential.folder, readonly=True)
-            if status != "OK":
-                raise GraphError(f"No se pudo abrir la carpeta IMAP {credential.folder}")
+            if auto_select:
+                self.select_folder(folder or credential.folder or "INBOX")
         except (imaplib.IMAP4.error, OSError, ValueError) as exc:
             raise GraphError(f"No se pudo conectar al servidor IMAP: {exc}") from exc
+
+    def select_folder(self, folder: str):
+        status, _ = self.connection.select(folder, readonly=True)
+        if status != "OK":
+            raise GraphError(f"No se pudo abrir la carpeta IMAP {folder}")
+
+    def list_folders(self) -> list[dict]:
+        status, data = self.connection.list()
+        if status != "OK":
+            raise GraphError("El servidor IMAP no pudo listar las carpetas")
+        folders = [parsed for item in data or [] if item and (parsed := parse_list_folder(item))]
+        if not any(folder["name"].casefold() == "inbox" for folder in folders):
+            folders.append({"name": "INBOX", "has_children": False})
+        return sorted(folders, key=lambda folder: (folder["name"].casefold() != "inbox", folder["name"].casefold()))
 
     def close(self):
         try:

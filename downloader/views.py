@@ -7,6 +7,8 @@ from django.shortcuts import render
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from .graph import GraphError
+from .imap import ImapClient
 from .models import AuditEvent, DownloadBatch, DownloadItem, InvoiceDocument, InvoiceSearch, Mailbox
 from .services import cleanup_batch_artifacts, download_folder_name, remove_document_file
 from .tasks import download_invoices, search_invoices
@@ -41,6 +43,21 @@ def search_page(request):
 
 
 @login_required
+@require_GET
+def mailbox_folders(request, mailbox_id):
+    try:
+        mailbox = Mailbox.objects.get(pk=mailbox_id, is_active=True)
+        with ImapClient(mailbox, auto_select=False) as client:
+            folders = client.list_folders()
+        default_folder = mailbox.imap_credential.folder or "INBOX"
+        return JsonResponse({"folders": folders, "default_folder": default_folder})
+    except Mailbox.DoesNotExist as exc:
+        return JsonResponse({"error": str(exc)}, status=404)
+    except GraphError as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+@login_required
 def library_page(request):
     return render(request, "downloader/library.html")
 
@@ -57,6 +74,15 @@ def create_search(request):
             raise ValueError("El rango de fechas no es válido")
         if not invoice_types or not set(invoice_types).issubset({"gas", "luz", "agua"}):
             raise ValueError("Debe seleccionar tipos de factura válidos")
+        raw_folders = payload.get("folders")
+        if raw_folders is None:
+            folders = []
+        elif not isinstance(raw_folders, list):
+            raise ValueError("Las carpetas IMAP no son válidas")
+        else:
+            folders = sorted({str(folder).strip() for folder in raw_folders if str(folder).strip()})
+        if len(folders) > 50 or any(len(folder) > 255 for folder in folders):
+            raise ValueError("Las carpetas IMAP no son válidas")
         mailbox = Mailbox.objects.get(pk=payload.get("mailbox_id"), is_active=True)
         search = InvoiceSearch.objects.create(
             requested_by=request.user,
@@ -64,6 +90,7 @@ def create_search(request):
             start_date=start_date,
             end_date=end_date,
             invoice_types=invoice_types,
+            folders=folders,
         )
         AuditEvent.objects.create(actor=request.user, action="search_created", object_type="InvoiceSearch", object_id=search.pk)
         search_invoices.delay(search.pk)
@@ -79,6 +106,7 @@ def serialize_search(search):
         "error": search.error,
         "total_found": search.total_found,
         "mailbox": search.mailbox.address,
+        "folders": search.folders,
         "start_date": search.start_date.isoformat(),
         "end_date": search.end_date.isoformat(),
     }

@@ -8,6 +8,8 @@
   const summary = document.getElementById('results-summary');
   const selectAll = document.getElementById('select-all');
   const downloadButton = document.getElementById('download');
+  const mailboxSelect = document.getElementById('mailbox');
+  const foldersBox = document.getElementById('mailbox-folders');
   let currentSearch = null;
 
   const invoiceTypes = new Set(['agua', 'luz', 'gas']);
@@ -51,6 +53,24 @@
     [selectAll, downloadButton].forEach((control) => { if (control) control.disabled = busy; });
     results?.querySelectorAll('.candidate').forEach((control) => { control.disabled = busy; });
     results?.setAttribute('aria-busy', String(busy));
+  };
+
+  const renderFolders = (folders, defaultFolder) => {
+    const selectedByDefault = new Set(['INBOX', defaultFolder].filter(Boolean));
+    foldersBox.innerHTML = folders.map((folder) => `<label class="folder-choice"><input class="mailbox-folder" type="checkbox" value="${escapeHtml(folder.name)}"${selectedByDefault.has(folder.name) ? ' checked' : ''}><span><strong>${escapeHtml(folder.name)}</strong>${folder.has_children ? '<small>Contiene subcarpetas</small>' : ''}</span></label>`).join('');
+  };
+
+  const loadFolders = async () => {
+    const mailboxId = mailboxSelect?.value;
+    if (!mailboxId || !foldersBox) return;
+    foldersBox.innerHTML = '<span class="inline-status">Cargando carpetas IMAP…</span>';
+    try {
+      const data = await getJson(`/api/mailboxes/${mailboxId}/folders`);
+      renderFolders(data.folders || [], data.default_folder);
+      if (!data.folders?.length) foldersBox.innerHTML = '<span class="inline-status">El buzón no ha devuelto carpetas.</span>';
+    } catch (error) {
+      foldersBox.innerHTML = `<label class="folder-choice"><input class="mailbox-folder" type="checkbox" value="INBOX" checked><span><strong>INBOX</strong><small>No se pudieron cargar las subcarpetas</small></span></label><span class="field-error">${escapeHtml(error.message)}</span>`;
+    }
   };
 
   async function pollSearch(id) {
@@ -170,13 +190,15 @@
     event.preventDefault();
     const types = [...document.querySelectorAll('.invoice-type:checked')].map((input) => input.value);
     if (!types.length) { setStatus('Selecciona al menos un tipo de factura.', 'error'); return; }
+    const folders = [...document.querySelectorAll('.mailbox-folder:checked')].map((input) => input.value);
+    if (!folders.length) { setStatus('Selecciona al menos una carpeta de origen.', 'error'); return; }
     setSearchBusy(true);
     results.hidden = true;
     body.innerHTML = '';
     setEmptyState(false);
     setStatus('Conectando con el buzón y poniendo la búsqueda en cola…', '', true);
     try {
-      const data = await getJson('/api/searches', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf}, body: JSON.stringify({mailbox_id: document.getElementById('mailbox').value, start_date: document.getElementById('start-date').value, end_date: document.getElementById('end-date').value, invoice_types: types})});
+      const data = await getJson('/api/searches', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf}, body: JSON.stringify({mailbox_id: mailboxSelect.value, start_date: document.getElementById('start-date').value, end_date: document.getElementById('end-date').value, invoice_types: types, folders})});
       currentSearch = data.id;
       pollSearch(currentSearch);
     } catch (error) {
@@ -205,6 +227,8 @@
     }
   });
 
+  mailboxSelect?.addEventListener('change', loadFolders);
   setDefaults();
+  loadFolders();
 })();
 

@@ -28,29 +28,33 @@ def date_range_iso(search: InvoiceSearch) -> tuple[str, str]:
 
 def run_search(search: InvoiceSearch):
     total = 0
-    with ImapClient(search.mailbox) as client:
-        messages = client.list_messages(search.start_date, search.end_date)
-        for invoice_type in search.invoice_types:
-            provider = provider_for(invoice_type)
-            for message in messages:
-                if not provider.matches(message):
-                    continue
-                candidate_data = provider.extract_candidates(message)
-                received_at = parse_datetime(message.received_at) if message.received_at else None
-                _, created = search.candidates.get_or_create(
-                    message_id=message.id,
-                    provider=provider.key,
-                    defaults={
-                        "internet_message_id": message.internet_message_id,
-                        "invoice_type": invoice_type,
-                        "sender": message.sender,
-                        "subject": message.subject,
-                        "received_at": received_at,
-                        "source_links": candidate_data.links,
-                        "metadata": candidate_data.metadata,
-                    },
-                )
-                total += int(created)
+    folders = search.folders or [search.mailbox.imap_credential.folder or "INBOX"]
+    with ImapClient(search.mailbox, auto_select=False) as client:
+        for folder in folders:
+            client.select_folder(folder)
+            messages = client.list_messages(search.start_date, search.end_date)
+            for invoice_type in search.invoice_types:
+                provider = provider_for(invoice_type)
+                for message in messages:
+                    if not provider.matches(message):
+                        continue
+                    candidate_data = provider.extract_candidates(message)
+                    received_at = parse_datetime(message.received_at) if message.received_at else None
+                    _, created = search.candidates.get_or_create(
+                        folder=folder,
+                        message_id=message.id,
+                        provider=provider.key,
+                        defaults={
+                            "internet_message_id": message.internet_message_id,
+                            "invoice_type": invoice_type,
+                            "sender": message.sender,
+                            "subject": message.subject,
+                            "received_at": received_at,
+                            "source_links": candidate_data.links,
+                            "metadata": candidate_data.metadata,
+                        },
+                    )
+                    total += int(created)
     search.total_found = total
     search.status = InvoiceSearch.Status.COMPLETED
     search.completed_at = timezone.now()
@@ -168,7 +172,7 @@ def is_pdf(downloaded: DownloadedFile) -> bool:
 
 def download_candidate(candidate, mailbox) -> InvoiceDocument:
     provider = provider_for(candidate.invoice_type)
-    with ImapClient(mailbox) as client:
+    with ImapClient(mailbox, folder=candidate.folder) as client:
         messages = client.list_messages(candidate.search.start_date, candidate.search.end_date)
         message = next((item for item in messages if item.id == candidate.message_id), None)
         if message:

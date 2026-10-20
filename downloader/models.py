@@ -45,6 +45,7 @@ class InvoiceSearch(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     invoice_types = models.JSONField(default=list)
+    folders = models.JSONField(default=list)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
     error = models.TextField(blank=True)
     total_found = models.PositiveIntegerField(default=0)
@@ -57,6 +58,7 @@ class InvoiceSearch(models.Model):
 
 class InvoiceCandidate(models.Model):
     search = models.ForeignKey(InvoiceSearch, on_delete=models.CASCADE, related_name="candidates")
+    folder = models.CharField(max_length=255, default="INBOX")
     message_id = models.CharField(max_length=500)
     internet_message_id = models.CharField(max_length=500, blank=True)
     provider = models.CharField(max_length=40)
@@ -69,7 +71,7 @@ class InvoiceCandidate(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["search", "message_id", "provider"], name="unique_search_message_provider")]
+        constraints = [models.UniqueConstraint(fields=["search", "folder", "message_id", "provider"], name="unique_search_folder_message_provider")]
         ordering = ["-received_at", "-created_at"]
 
 

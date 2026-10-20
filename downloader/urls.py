@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("busqueda/", views.search_page, name="search-page"),
     path("biblioteca/", views.library_page, name="library-page"),
+    path("api/mailboxes/<int:mailbox_id>/folders", views.mailbox_folders, name="mailbox-folders"),
     path("api/searches", views.create_search, name="create-search"),
     path("api/searches/<int:search_id>", views.search_detail, name="search-detail"),
     path("api/searches/<int:search_id>/results", views.search_results, name="search-results"),

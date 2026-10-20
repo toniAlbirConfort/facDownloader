@@ -2,7 +2,7 @@ from email.message import EmailMessage
 
 from django.test import SimpleTestCase
 
-from downloader.imap import part_text
+from downloader.imap import parse_list_folder, part_text
 
 
 class ImapTextTests(SimpleTestCase):
@@ -21,3 +21,8 @@ class ImapTextTests(SimpleTestCase):
         message.set_param("charset", "unknown-mail-charset")
 
         self.assertEqual(part_text(message), "Factura: año €")
+
+    def test_parses_imap_folder_listing(self):
+        folder = parse_list_folder(b'(\\HasChildren) "/" "TERCEROS/REPSOL"')
+
+        self.assertEqual(folder, {"name": "TERCEROS/REPSOL", "has_children": True})
