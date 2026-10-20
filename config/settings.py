@@ -71,11 +71,10 @@ if parsed.scheme.startswith("postgres"):
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": parsed.path}}
 
-AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-]
+# The application must accept the mailbox/admin password chosen by the user,
+# including short or otherwise common values. Django still hashes passwords
+# securely; an empty password is not accepted by the user forms themselves.
+AUTH_PASSWORD_VALIDATORS = []
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.Argon2PasswordHasher", "django.contrib.auth.hashers.PBKDF2PasswordHasher"]
 
 LANGUAGE_CODE = "es-es"
