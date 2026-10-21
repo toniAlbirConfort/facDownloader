@@ -109,6 +109,8 @@ GRAPH_CLIENT_SECRET = env("GRAPH_CLIENT_SECRET", "")
 CREDENTIAL_ENCRYPTION_KEY = env("CREDENTIAL_ENCRYPTION_KEY", "")
 GRAPH_TIMEOUT_SECONDS = float(env("GRAPH_TIMEOUT_SECONDS", "60"))
 DOWNLOAD_HTTP_CONCURRENCY = max(1, int(env("DOWNLOAD_HTTP_CONCURRENCY", "4")))
+# Keep Repsol portal traffic conservative; this ceiling prevents accidental bursts.
+DOWNLOAD_PORTAL_CONCURRENCY = max(1, min(2, int(env("DOWNLOAD_PORTAL_CONCURRENCY", "2"))))
 INVOICE_TEST_SENDERS = {
     value.strip().casefold()
     for value in env("INVOICE_TEST_SENDERS", "").split(",")

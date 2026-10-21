@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone as dt_timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Lock
+from time import sleep
 from unittest.mock import MagicMock, patch
 from zipfile import ZipFile
 
@@ -13,7 +15,7 @@ from django.utils import timezone
 from downloader.graph import DownloadedFile
 from downloader.imap import ImapClient as RealImapClient
 from downloader.providers import MailAttachment, MailMessage
-from downloader.services import date_range_iso, download_archive_member_name, download_candidate, download_folder_name, run_download_batch, safe_filename, spreadsheet_file_path
+from downloader.services import _download_items_concurrently, date_range_iso, download_archive_member_name, download_candidate, download_folder_name, run_download_batch, safe_filename, spreadsheet_file_path
 
 
 class ServiceTests(TestCase):
@@ -113,6 +115,48 @@ class ServiceTests(TestCase):
                     names = set(archive.namelist())
                     self.assertEqual(sum(name.endswith("facturas-agua.xlsx") for name in names), 1)
                     self.assertTrue(any(name.endswith("factura-1.pdf") for name in names))
+
+    def test_concurrent_download_helper_respects_small_portal_limit(self):
+        search = InvoiceSearch.objects.create(
+            requested_by=self.user,
+            mailbox=self.mailbox,
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 2),
+            invoice_types=["luz"],
+        )
+        batch = DownloadBatch.objects.create(requested_by=self.user, search=search)
+        items = []
+        for index in range(4):
+            candidate = InvoiceCandidate.objects.create(
+                search=search,
+                provider="repsol",
+                invoice_type="luz",
+                message_id=f"repsol-{index}",
+                sender="facturas@example.com",
+                subject="Factura de luz",
+                source_links=[f"https://example.com/{index}"],
+            )
+            items.append(DownloadItem.objects.create(batch=batch, candidate=candidate))
+
+        lock = Lock()
+        active = 0
+        peak_active = 0
+
+        def fake_download(item, mailbox):
+            nonlocal active, peak_active
+            with lock:
+                active += 1
+                peak_active = max(peak_active, active)
+            sleep(0.05)
+            with lock:
+                active -= 1
+            return item, None, "mocked"
+
+        with patch("downloader.services._download_item", side_effect=fake_download):
+            _download_items_concurrently(items, batch, concurrency=2)
+
+        self.assertEqual(peak_active, 2)
+        self.assertEqual(batch.items.filter(status="needs_review").count(), 4)
 
     def test_download_folder_name_uses_local_date(self):
         search = InvoiceSearch.objects.create(

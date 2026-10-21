@@ -1,12 +1,16 @@
+import logging
 import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from time import perf_counter
 
 from django.conf import settings
 
 from .crypto import decrypt
 from .graph import DownloadedFile, GraphError
 from .models import ProviderCredential
+
+logger = logging.getLogger(__name__)
 
 
 def _repsol_identity_values() -> list[str]:
@@ -64,20 +68,36 @@ def _download_button(page):
     raise GraphError("No se encontró el botón Descargar de la factura Repsol")
 
 
-def _dismiss_cookie_consent(page):
-    # OneTrust may inject the overlay shortly after DOMContentLoaded. Give it
-    # a moment to appear so it cannot intercept the form submission below.
-    page.wait_for_timeout(1000)
+def _dismiss_cookie_consent(page, timeout_error):
+    # Wait briefly for an actual consent control instead of sleeping for every invoice.
     for label in ("Solo necesarias", "Aceptar todas"):
-        button = _first_visible(
-            page.get_by_role("button", name=re.compile(f"^{re.escape(label)}$", re.IGNORECASE))
-        )
-        if not button:
-            button = _first_visible(page.get_by_text(label, exact=True))
-        if button:
-            button.click()
-            page.wait_for_timeout(250)
-            return
+        locator = page.get_by_role(
+            "button", name=re.compile(f"^{re.escape(label)}$", re.IGNORECASE)
+        ).first
+        try:
+            locator.wait_for(state="visible", timeout=150)
+        except timeout_error:
+            locator = page.get_by_text(label, exact=True).first
+            try:
+                locator.wait_for(state="visible", timeout=150)
+            except timeout_error:
+                continue
+        locator.click()
+        return
+
+
+def _wait_for_download_control(page, timeout_ms: int, timeout_error):
+    deadline = perf_counter() + min(timeout_ms, 15000) / 1000
+    locator = page.get_by_role("button", name=re.compile(r"^descargar$", re.IGNORECASE)).first
+    try:
+        locator.wait_for(state="visible", timeout=max(1, int((deadline - perf_counter()) * 1000)))
+    except timeout_error:
+        locator = page.get_by_text(re.compile(r"^descargar$", re.IGNORECASE), exact=True).first
+        try:
+            locator.wait_for(state="visible", timeout=max(1, int((deadline - perf_counter()) * 1000)))
+        except timeout_error as exc:
+            raise GraphError("El portal Repsol no mostró el botón Descargar") from exc
+    return _download_button(page)
 
 
 def download_repsol_invoice(source_links: list[str]) -> DownloadedFile:
@@ -92,36 +112,35 @@ def download_repsol_invoice(source_links: list[str]) -> DownloadedFile:
 
     timeout_ms = int(settings.GRAPH_TIMEOUT_SECONDS * 1000)
     last_error = None
+    attempt_number = 0
     identities = _repsol_identity_values()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
             for source_link in source_links:
                 for identity in identities:
+                    attempt_number += 1
+                    attempt_started = perf_counter()
+                    navigation_ms = consultation_ms = download_ms = 0.0
                     context = browser.new_context(accept_downloads=True)
                     page = context.new_page()
                     page.set_default_timeout(timeout_ms)
                     try:
+                        phase_started = perf_counter()
                         page.goto(source_link, wait_until="domcontentloaded", timeout=timeout_ms)
-                        _dismiss_cookie_consent(page)
+                        _dismiss_cookie_consent(page, PlaywrightTimeoutError)
+                        navigation_ms = (perf_counter() - phase_started) * 1000
+
+                        phase_started = perf_counter()
                         field = _identity_input(page)
                         field.fill(identity)
                         _consult_button(page).click()
-                        # The invoice viewer is rendered asynchronously after
-                        # the form submission. Wait for the actual control as
-                        # well as a short settling period so a cold portal
-                        # response cannot look like a missing button.
-                        page.wait_for_timeout(3000)
-                        download_locator = page.get_by_role(
-                            "button", name=re.compile(r"^descargar$", re.IGNORECASE)
-                        ).first
-                        try:
-                            download_locator.wait_for(
-                                state="visible", timeout=min(timeout_ms, 15000)
-                            )
-                        except PlaywrightTimeoutError:
-                            pass
-                        download_button = _download_button(page)
+                        download_button = _wait_for_download_control(
+                            page, timeout_ms, PlaywrightTimeoutError
+                        )
+                        consultation_ms = (perf_counter() - phase_started) * 1000
+
+                        phase_started = perf_counter()
                         with page.expect_download(timeout=timeout_ms) as download_info:
                             download_button.click()
                         download = download_info.value
@@ -132,9 +151,23 @@ def download_repsol_invoice(source_links: list[str]) -> DownloadedFile:
                         if size > 50 * 1024 * 1024:
                             target_path.unlink(missing_ok=True)
                             raise GraphError("La factura Repsol supera el límite de 50 MB")
+                        download_ms = (perf_counter() - phase_started) * 1000
+                        logger.info(
+                            "Repsol invoice portal timing navigation_ms=%.0f consultation_ms=%.0f download_ms=%.0f total_ms=%.0f",
+                            navigation_ms,
+                            consultation_ms,
+                            download_ms,
+                            (perf_counter() - attempt_started) * 1000,
+                        )
                         return DownloadedFile(target_path, "application/pdf", size)
                     except (GraphError, PlaywrightTimeoutError, OSError) as exc:
                         last_error = exc
+                        logger.warning(
+                            "Repsol invoice portal attempt failed attempt=%d elapsed_ms=%.0f error_type=%s",
+                            attempt_number,
+                            (perf_counter() - attempt_started) * 1000,
+                            type(exc).__name__,
+                        )
                     finally:
                         context.close()
         finally:

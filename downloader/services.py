@@ -1,9 +1,11 @@
 import hashlib
+import logging
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 from pathlib import Path
+from time import perf_counter
 from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -21,6 +23,7 @@ from .portal import download_repsol_invoice
 from .invoice_extraction import build_invoice_workbook
 
 DOWNLOADABLE_INVOICE_TYPES = frozenset({"agua", "luz", "gas"})
+logger = logging.getLogger(__name__)
 
 
 def date_range_iso(search: InvoiceSearch) -> tuple[str, str]:
@@ -253,6 +256,8 @@ def _download_item(
     imap_prefetched: bool = False,
     manage_connection: bool = True,
 ):
+    started = perf_counter()
+    succeeded = False
     if manage_connection:
         close_old_connections()
     try:
@@ -262,10 +267,18 @@ def _download_item(
             message=message,
             imap_prefetched=imap_prefetched,
         )
+        succeeded = True
         return item, document, ""
     except Exception as exc:
         return item, None, str(exc)
     finally:
+        logger.info(
+            "Invoice download timing provider=%s service=%s elapsed_ms=%.0f success=%s",
+            item.candidate.provider,
+            item.candidate.invoice_type,
+            (perf_counter() - started) * 1000,
+            succeeded,
+        )
         if manage_connection:
             close_old_connections()
 
@@ -282,7 +295,21 @@ def _save_download_result(item: DownloadItem, document: InvoiceDocument | None, 
         item.save(update_fields=["status", "error"])
 
 
+def _download_items_concurrently(items: list[DownloadItem], batch: DownloadBatch, concurrency: int):
+    if not items:
+        return
+    with ThreadPoolExecutor(max_workers=min(max(1, concurrency), len(items))) as executor:
+        futures = {
+            executor.submit(_download_item, item, batch.search.mailbox): item
+            for item in items
+        }
+        for future in as_completed(futures):
+            item, document, error = future.result()
+            _save_download_result(item, document, error)
+
+
 def run_download_batch(batch: DownloadBatch):
+    started = perf_counter()
     batch.status = DownloadBatch.Status.RUNNING
     batch.save(update_fields=["status"])
     settings.DOWNLOAD_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -294,17 +321,17 @@ def run_download_batch(batch: DownloadBatch):
             for item in items
             if item.candidate.source_links and item.candidate.provider != "repsol"
         ]
-        serial_items = [item for item in items if item not in direct_items]
+        portal_items = [
+            item
+            for item in items
+            if item.candidate.source_links and item.candidate.provider == "repsol"
+        ]
+        serial_items = [item for item in items if not item.candidate.source_links]
 
         concurrency = max(1, int(getattr(settings, "DOWNLOAD_HTTP_CONCURRENCY", 4)))
-        with ThreadPoolExecutor(max_workers=min(concurrency, len(direct_items) or 1)) as executor:
-            futures = {
-                executor.submit(_download_item, item, batch.search.mailbox): item
-                for item in direct_items
-            }
-            for future in as_completed(futures):
-                item, document, error = future.result()
-                _save_download_result(item, document, error)
+        portal_concurrency = max(1, min(2, int(getattr(settings, "DOWNLOAD_PORTAL_CONCURRENCY", 2))))
+        _download_items_concurrently(direct_items, batch, concurrency)
+        _download_items_concurrently(portal_items, batch, portal_concurrency)
 
         for item in serial_items:
             folder = item.candidate.folder
@@ -372,4 +399,11 @@ def run_download_batch(batch: DownloadBatch):
         batch.error = str(exc)
         batch.completed_at = timezone.now()
         batch.save(update_fields=["status", "error", "completed_at"])
+    finally:
+        logger.info(
+            "Invoice batch timing batch_id=%s elapsed_ms=%.0f status=%s",
+            batch.pk,
+            (perf_counter() - started) * 1000,
+            batch.status,
+        )
 
