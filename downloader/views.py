@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from .graph import GraphError
 from .imap import ImapClient
 from .models import AuditEvent, DownloadBatch, DownloadItem, InvoiceDocument, InvoiceSearch, Mailbox
-from .services import cleanup_batch_artifacts, download_folder_name, remove_document_file
+from .services import cleanup_batch_artifacts, download_folder_name, remove_document_file, spreadsheet_file_path
 from .tasks import download_invoices, search_invoices
 
 
@@ -189,6 +189,15 @@ def download_status(request, batch_id):
         "error": batch.error,
         "folder_name": download_folder_name(batch),
         "zip_available": bool(batch.zip_path and Path(batch.zip_path).exists()),
+        "spreadsheets": [
+            {
+                "invoice_type": invoice_type,
+                "file_name": path.name,
+                "download_url": f"/api/downloads/{batch.pk}/spreadsheets/{invoice_type}",
+            }
+            for invoice_type in sorted({item["invoice_type"] for item in items if item["status"] == "downloaded"})
+            if (path := spreadsheet_file_path(batch, invoice_type)).is_file()
+        ],
         "items": items,
     })
 
@@ -204,6 +213,31 @@ def download_zip(request, batch_id):
         raise Http404
     response = FileResponse(open(batch.zip_path, "rb"), as_attachment=True, filename=f"facturas-{batch.pk}.zip")
     response._resource_closers.append(lambda: cleanup_batch_artifacts(batch))
+    return response
+
+
+@login_required
+@require_GET
+def download_spreadsheet(request, batch_id, invoice_type):
+    try:
+        batch = DownloadBatch.objects.get(pk=batch_id, requested_by=request.user)
+    except DownloadBatch.DoesNotExist as exc:
+        raise Http404 from exc
+    if not batch.items.filter(status="downloaded", candidate__invoice_type=invoice_type).exists():
+        raise Http404
+    try:
+        path = spreadsheet_file_path(batch, invoice_type)
+    except GraphError as exc:
+        raise Http404 from exc
+    if not path.is_file():
+        raise Http404
+    response = FileResponse(
+        open(path, "rb"),
+        as_attachment=True,
+        filename=path.name,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response._resource_closers.append(lambda: path.unlink(missing_ok=True))
     return response
 
 

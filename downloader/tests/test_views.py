@@ -5,6 +5,8 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from tempfile import TemporaryDirectory
+from pathlib import Path
 
 from downloader.models import DownloadBatch, InvoiceCandidate, InvoiceSearch, Mailbox, MailboxCredential
 
@@ -116,4 +118,38 @@ class InterfaceRoutingTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["folder_name"], f"facturas-{timezone.localtime(batch.created_at).date().isoformat()}")
         self.assertEqual(payload["items"][0]["invoice_type"], "agua")
+
+    def test_spreadsheet_download_is_authorized_and_uses_excel_content_type(self):
+        search = InvoiceSearch.objects.create(
+            requested_by=self.user,
+            mailbox=Mailbox.objects.get(address="contabilidad@example.com"),
+            start_date="2026-10-01",
+            end_date="2026-10-20",
+            invoice_types=["agua"],
+        )
+        candidate = InvoiceCandidate.objects.create(
+            search=search,
+            message_id="spreadsheet-message",
+            provider="veolia",
+            invoice_type="agua",
+            sender="facturas@example.com",
+            subject="Factura de agua",
+        )
+        batch = DownloadBatch.objects.create(requested_by=self.user, search=search)
+        batch.items.create(candidate=candidate, status="downloaded")
+        with TemporaryDirectory() as temporary_root:
+            with self.settings(DOWNLOAD_TEMP_ROOT=Path(temporary_root)):
+                spreadsheet = Path(temporary_root) / "spreadsheets" / str(batch.pk) / "facturas-agua.xlsx"
+                spreadsheet.parent.mkdir(parents=True)
+                spreadsheet.write_bytes(b"xlsx-data")
+
+                response = self.client.get(reverse("download-spreadsheet", args=[batch.pk, "agua"]))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.assertEqual(b"".join(response.streaming_content), b"xlsx-data")
+
+                self.client.logout()
+                self.client.force_login(User.objects.create_user("other", password="safe-password"))
+                unauthorized = self.client.get(reverse("download-spreadsheet", args=[batch.pk, "agua"]))
+                self.assertEqual(unauthorized.status_code, 404)
 

@@ -132,7 +132,7 @@
     return candidate;
   };
 
-  async function saveDocumentsToFolder(documents, folderName) {
+  async function saveDocumentsToFolder(documents, spreadsheets, folderName) {
     if (!window.showDirectoryPicker) throw new Error('Tu navegador no permite elegir una carpeta local. Descarga el ZIP como alternativa.');
     const directory = await window.showDirectoryPicker({mode: 'readwrite'});
     const rootDirectory = await directory.getDirectoryHandle(folderName, {create: true});
@@ -158,12 +158,29 @@
       await writable.write(await response.blob());
       await writable.close();
     }
+
+    for (const spreadsheet of spreadsheets) {
+      const folderKey = useTypeFolders ? spreadsheet.invoice_type : 'root';
+      let targetDirectory = folders.get(folderKey);
+      if (!targetDirectory) {
+        targetDirectory = useTypeFolders ? await rootDirectory.getDirectoryHandle(folderKey, {create: true}) : rootDirectory;
+        folders.set(folderKey, targetDirectory);
+        usedNamesByFolder.set(folderKey, new Set());
+      }
+      const response = await fetch(spreadsheet.download_url, {credentials: 'same-origin'});
+      if (!response.ok) throw new Error(`No se pudo descargar ${spreadsheet.file_name}.`);
+      const handle = await targetDirectory.getFileHandle(uniqueFileName(spreadsheet.file_name, usedNamesByFolder.get(folderKey)), {create: true});
+      const writable = await handle.createWritable();
+      await writable.write(await response.blob());
+      await writable.close();
+    }
   }
 
   function renderDownloadReady(id, data) {
     const documents = data.items.filter((item) => item.status === 'downloaded' && item.download_url);
+    const spreadsheets = data.spreadsheets || [];
     const links = [];
-    if (documents.length && window.showDirectoryPicker) links.push(`<button class="button button-primary" id="save-to-folder" type="button">Elegir carpeta y guardar PDFs</button>`);
+    if (documents.length && window.showDirectoryPicker) links.push(`<button class="button button-primary" id="save-to-folder" type="button">Elegir carpeta y guardar PDFs y Excel</button>`);
     if (data.zip_available) links.push(`<a class="button button-secondary" href="/api/downloads/${id}/file">Descargar ZIP</a>`);
     setDownloadBusy(false);
     if (!links.length) { setStatus(data.error || 'No se pudo preparar ningún documento.', 'error'); return; }
@@ -173,14 +190,14 @@
     document.getElementById('save-to-folder')?.addEventListener('click', async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
-      button.textContent = 'Guardando documentos…';
+      button.textContent = 'Guardando PDFs y Excel…';
       try {
-        await saveDocumentsToFolder(documents, data.folder_name);
-        button.textContent = 'Documentos guardados';
-        setStatus(`Se han guardado ${documents.length} PDF${documents.length === 1 ? '' : 's'} en ${data.folder_name}.`, 'success');
+        await saveDocumentsToFolder(documents, spreadsheets, data.folder_name);
+        button.textContent = 'PDFs y Excel guardados';
+        setStatus(`Se han guardado ${documents.length} PDF${documents.length === 1 ? '' : 's'} y ${spreadsheets.length} Excel en ${data.folder_name}.`, 'success');
       } catch (error) {
         button.disabled = false;
-        button.textContent = 'Elegir carpeta y guardar PDFs';
+        button.textContent = 'Elegir carpeta y guardar PDFs y Excel';
         if (error.name === 'AbortError') return;
         setStatus(error.message, 'error');
       }

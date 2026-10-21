@@ -30,6 +30,8 @@ Las facturas se preparan en segundo plano, pero la descarga final se realiza en 
 
 Los PDFs y las descargas ZIP usan únicamente el área temporal `download_data`; después de entregarse se eliminan junto con sus metadatos de documento.
 
+Las descargas incluyen un Excel por cada tipo de factura con una fila por PDF. El texto se extrae localmente del PDF y, si faltan los datos clave, se intenta OCR local en español e inglés. Los datos que no se puedan reconocer quedan vacíos y marcados para revisión. El contenedor instala Tesseract; en ejecución local se necesita Tesseract con los idiomas español e inglés además de las dependencias Python.
+
 ## Desarrollo sin Docker
 
 El proyecto puede ejecutar los tests con SQLite si las dependencias Python están instaladas:
