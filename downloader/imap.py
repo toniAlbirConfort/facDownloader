@@ -166,7 +166,14 @@ class ImapClient:
             raise GraphError(f"No se pudo conectar al servidor IMAP: {exc}") from exc
 
     def select_folder(self, folder: str):
-        status, _ = self.connection.select(folder, readonly=True)
+        try:
+            status, _ = self.connection.select(folder, readonly=True)
+        except imaplib.IMAP4.error as exc:
+            # Some IMAP servers reject EXAMINE's modifier list even though they
+            # support SELECT. Fall back only for that specific server error.
+            if "invalid modifier list in examine" not in str(exc).casefold():
+                raise
+            status, _ = self.connection.select(folder, readonly=False)
         if status != "OK":
             raise GraphError(f"No se pudo abrir la carpeta IMAP {folder}")
 
@@ -209,7 +216,9 @@ class ImapClient:
 
         messages = []
         for uid in (data[0] or b"").split():
-            status, fetched = self.connection.uid("fetch", uid, "(RFC822)")
+            # BODY.PEEK avoids setting the Seen flag when a server required
+            # SELECT fallback because it does not implement EXAMINE correctly.
+            status, fetched = self.connection.uid("fetch", uid, "(BODY.PEEK[])")
             if status != "OK":
                 continue
             raw = next((item[1] for item in fetched if isinstance(item, tuple)), None)
