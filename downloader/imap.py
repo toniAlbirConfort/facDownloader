@@ -166,14 +166,17 @@ class ImapClient:
             raise GraphError(f"No se pudo conectar al servidor IMAP: {exc}") from exc
 
     def select_folder(self, folder: str):
+        # imaplib 3.12 sends the mailbox argument as-is. Quote it explicitly
+        # so spaces in names are not parsed as SELECT/EXAMINE modifiers.
+        quoted_folder = '"' + folder.replace("\\", "\\\\").replace('"', '\\"') + '"'
         try:
-            status, _ = self.connection.select(folder, readonly=True)
+            status, _ = self.connection.select(quoted_folder, readonly=True)
         except imaplib.IMAP4.error as exc:
             # Some IMAP servers reject EXAMINE's modifier list even though they
             # support SELECT. Fall back only for that specific server error.
             if "invalid modifier list in examine" not in str(exc).casefold():
                 raise
-            status, _ = self.connection.select(folder, readonly=False)
+            status, _ = self.connection.select(quoted_folder, readonly=False)
         if status != "OK":
             raise GraphError(f"No se pudo abrir la carpeta IMAP {folder}")
 
