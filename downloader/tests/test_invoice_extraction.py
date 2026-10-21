@@ -85,6 +85,37 @@ CUOTA DE SERVICIO 10,95 NS
 CONSUMO 24 0,412 9,89 NS
 """
 
+REPSOL_GAS_LAYOUT_TEXT = """Factura de gas
+Titular: Empresa de prueba SL
+CIF/NIF: B12345678
+Dirección de
+Suministro:
+CALLE DE PRUEBA 12 1 A
+03500 MUNICIPIO (Alicante)
+Tipo: Mercado libre N° de Contrato: 4300000000
+CUPS: ES0222122000039942VG
+TOTAL FACTURA 1.000,91 €
+Periodo de Facturación: Del 26.06.2026 al 18.08.2026
+Término Fijo 17,94 €
+Término Energía 9.032 kWh 792,64 €
+Alquiler de contador 1,01 €
+Impuesto Esp. Hidrocarburos 9.032 kWh 0,001729 €/kWh 15,61 €
+Base imponible 827,20 €
+I.V.A. (21%) de 827,20 173,71 €
+Tarifa de Acceso: RL.2
+N° de contador 3414022
+Distribuidora: NEDGIA CEGAS
+Fecha y N° Factura 31.08.2026 / 10GLN01000353682
+Fecha de cobro 01.09.2026
+Importe ATR: 129,21 €
+Importe Cargos 0,08 €
+Lectura actual Real 18.08.2026 4.243 m3
+Lectura anterior Real 25.06.2026 3.539 m3
+Consumo en m3 704 m3
+Factor de conversión 12,829545 kWh/m3
+Consumo en kWh 9.032 kWh
+"""
+
 
 def write_pdf(path: Path, text: str | None = None, image_only: bool = False):
     pdf = fitz.open()
@@ -178,6 +209,58 @@ class InvoiceExtractionTests(SimpleTestCase):
         self.assertEqual(fields["vat_amount"], "30,30")
         self.assertEqual(fields["vat_base"], "144,27")
         self.assertEqual(fields["extraction_status"], "Correcta")
+
+    def test_repsol_gas_layout_extracts_readings_and_invoice_breakdown(self):
+        fields = parse_invoice_text(REPSOL_GAS_LAYOUT_TEXT, "gas", "repsol")
+
+        self.assertEqual(fields["invoice_number"], "10GLN01000353682")
+        self.assertEqual(fields["issue_date"], "31.08.2026")
+        self.assertEqual(fields["contract_number"], "4300000000")
+        self.assertEqual(fields["period_start"], "26.06.2026")
+        self.assertEqual(fields["period_end"], "18.08.2026")
+        self.assertEqual(fields["due_date"], "01.09.2026")
+        self.assertEqual(fields["cups"], "ES0222122000039942VG")
+        self.assertEqual(fields["meter_number"], "3414022")
+        self.assertEqual(fields["distributor"], "NEDGIA CEGAS")
+        self.assertEqual(fields["tariff"], "Mercado libre")
+        self.assertEqual(fields["access_tariff"], "RL.2")
+        self.assertEqual(fields["previous_reading_date"], "25.06.2026")
+        self.assertEqual(fields["previous_reading"], "3.539")
+        self.assertEqual(fields["current_reading_date"], "18.08.2026")
+        self.assertEqual(fields["current_reading"], "4.243")
+        self.assertEqual(fields["consumption_m3"], "704")
+        self.assertEqual(fields["conversion_factor_kwh_m3"], "12,829545")
+        self.assertEqual(fields["consumption_kwh"], "9.032")
+        self.assertEqual(fields["fixed_term_amount"], "17,94")
+        self.assertEqual(fields["energy_amount"], "792,64")
+        self.assertEqual(fields["meter_rental_amount"], "1,01")
+        self.assertEqual(fields["hydrocarbon_tax_amount"], "15,61")
+        self.assertEqual(fields["atr_amount"], "129,21")
+        self.assertEqual(fields["charges_amount"], "0,08")
+        self.assertEqual(fields["vat_rate"], "21")
+        self.assertEqual(fields["vat_base"], "827,20")
+        self.assertEqual(fields["vat_amount"], "173,71")
+        self.assertEqual(fields["total_amount"], "1.000,91")
+        self.assertEqual(fields["extraction_status"], "Correcta")
+
+    def test_gas_workbook_converts_spanish_grouped_integers_to_numbers(self):
+        with TemporaryDirectory() as temporary_root:
+            destination = Path(temporary_root) / "facturas-gas.xlsx"
+            document = SimpleNamespace(file_path="not-opened.pdf", provider="repsol")
+            fields = parse_invoice_text(REPSOL_GAS_LAYOUT_TEXT, "gas", "repsol")
+            with patch("downloader.invoice_extraction.extract_invoice_fields", return_value=fields):
+                build_invoice_workbook([document], "gas", destination)
+
+            workbook = load_workbook(destination, read_only=True, data_only=True)
+            sheet = workbook["Gas"]
+            values = dict(zip((cell.value for cell in sheet[1]), (cell.value for cell in sheet[2])))
+            self.assertEqual(values["Consumo (kWh)"], 9032)
+            self.assertEqual(values["Lectura anterior (m³)"], 3539)
+            self.assertEqual(values["Lectura actual (m³)"], 4243)
+            self.assertEqual(values["Base IVA (€)"], 827.2)
+            self.assertEqual(values["IVA (€)"], 173.71)
+            self.assertEqual(values["Estado de extracción"], "Correcta")
+            workbook.close()
 
     def test_text_pdf_extracts_common_and_electricity_fields_without_ocr(self):
         with TemporaryDirectory() as temporary_root:
