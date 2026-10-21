@@ -13,7 +13,7 @@ from django.utils import timezone
 from downloader.graph import DownloadedFile
 from downloader.imap import ImapClient as RealImapClient
 from downloader.providers import MailAttachment, MailMessage
-from downloader.services import date_range_iso, download_archive_member_name, download_candidate, download_folder_name, run_download_batch, safe_filename
+from downloader.services import date_range_iso, download_archive_member_name, download_candidate, download_folder_name, run_download_batch, safe_filename, spreadsheet_file_path
 
 
 class ServiceTests(TestCase):
@@ -109,6 +109,10 @@ class ServiceTests(TestCase):
                 self.assertEqual(imap_client.call_count, 1)
                 fake_client.list_messages.assert_called_once()
                 self.assertEqual(batch.items.filter(status="downloaded").count(), 2)
+                with ZipFile(batch.zip_path) as archive:
+                    names = set(archive.namelist())
+                    self.assertEqual(sum(name.endswith("facturas-agua.xlsx") for name in names), 1)
+                    self.assertTrue(any(name.endswith("factura-1.pdf") for name in names))
 
     def test_download_folder_name_uses_local_date(self):
         search = InvoiceSearch.objects.create(
@@ -167,8 +171,15 @@ class ServiceTests(TestCase):
                 with ZipFile(batch.zip_path) as archive:
                     self.assertEqual(
                         set(archive.namelist()),
-                        {"facturas-2026-10-20/agua/agua.pdf", "facturas-2026-10-20/gas/gas.pdf"},
+                        {
+                            "facturas-2026-10-20/agua/agua.pdf",
+                            "facturas-2026-10-20/agua/facturas-agua.xlsx",
+                            "facturas-2026-10-20/gas/gas.pdf",
+                            "facturas-2026-10-20/gas/facturas-gas.xlsx",
+                        },
                     )
+                self.assertTrue(spreadsheet_file_path(batch, "agua").is_file())
+                self.assertTrue(spreadsheet_file_path(batch, "gas").is_file())
                 agua_item = batch.items.get(candidate__invoice_type="agua")
                 self.assertEqual(
                     download_archive_member_name(agua_item, True, "facturas-2026-10-20"),

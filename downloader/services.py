@@ -18,6 +18,7 @@ from .imap import ImapClient
 from .models import AuditEvent, DownloadBatch, DownloadItem, InvoiceDocument, InvoiceSearch
 from .providers import MailMessage, provider_for
 from .portal import download_repsol_invoice
+from .invoice_extraction import build_invoice_workbook
 
 DOWNLOADABLE_INVOICE_TYPES = frozenset({"agua", "luz", "gas"})
 
@@ -80,7 +81,7 @@ def remove_document_file(document: InvoiceDocument):
 
 
 def cleanup_batch_artifacts(batch: DownloadBatch):
-    """Release PDFs and the ZIP once a batch has been sent to the user."""
+    """Release PDFs, spreadsheets, and the ZIP after ZIP delivery."""
     documents = {
         item.document_id: item.document
         for item in batch.items.select_related("document")
@@ -94,6 +95,8 @@ def cleanup_batch_artifacts(batch: DownloadBatch):
     zip_path = Path(batch.zip_path) if batch.zip_path else None
     if zip_path:
         zip_path.unlink(missing_ok=True)
+    if spreadsheet_directory(batch).exists():
+        shutil.rmtree(spreadsheet_directory(batch), ignore_errors=True)
     if batch.zip_path:
         batch.zip_path = ""
         batch.save(update_fields=["zip_path"])
@@ -104,6 +107,16 @@ def download_folder_name(batch: DownloadBatch) -> str:
     if timezone.is_naive(created_at):
         created_at = timezone.make_aware(created_at, timezone.get_current_timezone())
     return f"facturas-{timezone.localtime(created_at).date().isoformat()}"
+
+
+def spreadsheet_directory(batch: DownloadBatch) -> Path:
+    return settings.DOWNLOAD_TEMP_ROOT / "spreadsheets" / str(batch.pk)
+
+
+def spreadsheet_file_path(batch: DownloadBatch, invoice_type: str) -> Path:
+    if invoice_type not in DOWNLOADABLE_INVOICE_TYPES:
+        raise GraphError("El tipo de factura no es válido para descargar el Excel")
+    return spreadsheet_directory(batch) / f"facturas-{invoice_type}.xlsx"
 
 
 def download_archive_member_name(item: DownloadItem, use_type_folders: bool, root_name: str = "", filename: str | None = None) -> str:
@@ -317,6 +330,16 @@ def run_download_batch(batch: DownloadBatch):
             return
         invoice_types = {item.document.invoice_type for item in successful}
         use_type_folders = len(invoice_types) > 1
+        documents_by_type = {}
+        for item in successful:
+            documents_by_type.setdefault(item.document.invoice_type, []).append(item.document)
+        spreadsheet_paths = {}
+        for invoice_type, documents in documents_by_type.items():
+            spreadsheet_paths[invoice_type] = build_invoice_workbook(
+                documents,
+                invoice_type,
+                spreadsheet_file_path(batch, invoice_type),
+            )
         used_archive_names: dict[str, set[str]] = {}
         zip_path = settings.DOWNLOAD_TEMP_ROOT / f"batch-{batch.pk}.zip"
         with ZipFile(zip_path, "w", ZIP_DEFLATED) as archive:
@@ -335,6 +358,11 @@ def run_download_batch(batch: DownloadBatch):
                         filename,
                     ),
                 )
+            for invoice_type, path in spreadsheet_paths.items():
+                arcname = f"{download_folder_name(batch)}/"
+                if use_type_folders:
+                    arcname += f"{invoice_type}/"
+                archive.write(path, arcname=f"{arcname}{path.name}")
         batch.zip_path = str(zip_path)
         batch.status = DownloadBatch.Status.COMPLETED
         batch.completed_at = timezone.now()

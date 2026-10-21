@@ -13,6 +13,7 @@ urlpatterns = [
     path("api/searches/<int:search_id>/download", views.start_download, name="start-download"),
     path("api/downloads/<int:batch_id>", views.download_status, name="download-status"),
     path("api/downloads/<int:batch_id>/file", views.download_zip, name="download-zip"),
+    path("api/downloads/<int:batch_id>/spreadsheets/<str:invoice_type>", views.download_spreadsheet, name="download-spreadsheet"),
     path("api/documents", views.document_list, name="document-list"),
     path("api/documents/<int:document_id>/download", views.document_download, name="document-download"),
     path("api/documents/<int:document_id>", views.document_delete, name="document-delete"),
