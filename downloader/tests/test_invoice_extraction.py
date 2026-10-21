@@ -61,6 +61,30 @@ Impuesto El\ufffdctrico 6,98 \u20ac 136,49 x 5,11269632%
 IVA (21 %) de 144,27 30,30 \u20ac
 """
 
+HIDRAQUA_LAYOUT_TEXT = """DATOS DEL CONTRATO
+N\ufffdm. contrato: 165068
+Titular: Empresa de prueba S.L.U.
+NIF: B53101911
+Direcci\ufffdn: CALLE DEL AGUA 15 B/B-2-C
+03581 ALFAZ DEL PI
+DATOS DE FACTURACI\ufffdN
+N\ufffdm factura 01352026A100043736
+Periodo 2026/04
+Fecha emisi\ufffdn 14-10-2026
+TOTAL A PAGAR 74,49 \u20acCONSUMO TOTAL 24 m3
+Contador \ufffd mm Lectura anterior Lectura actual Consumo m3 Base fact.
+J19OA016921Z 15 13-07-26 502 13-10-26 526 24 Real
+AGUA (1) 36,26
+CUOTA DE SERVICIO 21,13 10
+CONSUMO Tramo 1 24 0,6306 15,13 10
+ALCANTARILLADO (2) 12,51
+CONSUMO Bloque Unico 24 0,5212 12,51 10
+I.V.A al 10 % BASE IMPONIBLE: 48,77 4,88
+CANON SANEAMIENTO (3) 20,84
+CUOTA DE SERVICIO 10,95 NS
+CONSUMO 24 0,412 9,89 NS
+"""
+
 
 def write_pdf(path: Path, text: str | None = None, image_only: bool = False):
     pdf = fitz.open()
@@ -79,6 +103,53 @@ def write_pdf(path: Path, text: str | None = None, image_only: bool = False):
 
 
 class InvoiceExtractionTests(SimpleTestCase):
+    def test_hidraqua_water_layout_extracts_meter_readings_and_charge_totals(self):
+        fields = parse_invoice_text(HIDRAQUA_LAYOUT_TEXT, "agua", "hidraqua")
+
+        self.assertEqual(fields["holder"], "Empresa de prueba S.L.U.")
+        self.assertEqual(fields["tax_id"], "B53101911")
+        self.assertEqual(fields["supply_address"], "CALLE DEL AGUA 15 B/B-2-C 03581 ALFAZ DEL PI")
+        self.assertEqual(fields["contract_number"], "165068")
+        self.assertEqual(fields["invoice_number"], "01352026A100043736")
+        self.assertEqual(fields["period_start"], "13-07-26")
+        self.assertEqual(fields["period_end"], "13-10-26")
+        self.assertEqual(fields["meter_number"], "J19OA016921Z")
+        self.assertEqual(fields["meter_size_mm"], "15")
+        self.assertEqual(fields["previous_reading_date"], "13-07-26")
+        self.assertEqual(fields["previous_reading"], "502")
+        self.assertEqual(fields["current_reading_date"], "13-10-26")
+        self.assertEqual(fields["current_reading"], "526")
+        self.assertEqual(fields["consumption_m3"], "24")
+        self.assertEqual(fields["water_amount"], "36,26")
+        self.assertEqual(fields["sewerage_amount"], "12,51")
+        self.assertEqual(fields["sanitation_amount"], "20,84")
+        self.assertEqual(fields["vat_rate"], "10")
+        self.assertEqual(fields["vat_base"], "48,77")
+        self.assertEqual(fields["vat_amount"], "4,88")
+        self.assertEqual(fields["total_amount"], "74,49")
+        self.assertEqual(fields["extraction_status"], "Correcta")
+
+    def test_hidraqua_workbook_includes_water_bill_breakdown_columns(self):
+        with TemporaryDirectory() as temporary_root:
+            destination = Path(temporary_root) / "facturas-agua.xlsx"
+            document = SimpleNamespace(file_path="not-opened.pdf", provider="hidraqua")
+            fields = parse_invoice_text(HIDRAQUA_LAYOUT_TEXT, "agua", "hidraqua")
+            with patch("downloader.invoice_extraction.extract_invoice_fields", return_value=fields):
+                build_invoice_workbook([document], "agua", destination)
+
+            workbook = load_workbook(destination, read_only=True, data_only=True)
+            sheet = workbook["Agua"]
+            values = dict(zip((cell.value for cell in sheet[1]), (cell.value for cell in sheet[2])))
+            self.assertEqual(values["Titular"], "Empresa de prueba S.L.U.")
+            self.assertEqual(values["Lectura anterior"], 502)
+            self.assertEqual(values["Lectura actual"], 526)
+            self.assertEqual(values["Agua (€)"], 36.26)
+            self.assertEqual(values["Alcantarillado (€)"], 12.51)
+            self.assertEqual(values["Canon de saneamiento (€)"], 20.84)
+            self.assertEqual(values["IVA (€)"], 4.88)
+            self.assertEqual(values["Estado de extracción"], "Correcta")
+            workbook.close()
+
     def test_repsol_layout_extracts_fields_with_broken_pdf_glyphs(self):
         fields = parse_invoice_text(REPSOL_LAYOUT_TEXT, "luz", "repsol")
 

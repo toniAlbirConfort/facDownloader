@@ -36,9 +36,18 @@ COMMON_FIELDS = (
 SERVICE_FIELDS = {
     "agua": (
         ("Contador", "meter_number"),
+        ("Calibre del contador (mm)", "meter_size_mm"),
+        ("Fecha de lectura anterior", "previous_reading_date"),
         ("Lectura anterior", "previous_reading"),
+        ("Fecha de lectura actual", "current_reading_date"),
         ("Lectura actual", "current_reading"),
         ("Consumo (m³)", "consumption_m3"),
+        ("Agua (€)", "water_amount"),
+        ("Alcantarillado (€)", "sewerage_amount"),
+        ("Canon de saneamiento (€)", "sanitation_amount"),
+        ("IVA (%)", "vat_rate"),
+        ("Base IVA (€)", "vat_base"),
+        ("IVA (€)", "vat_amount"),
     ),
     "luz": (
         ("CUPS", "cups"),
@@ -70,13 +79,14 @@ SERVICE_FIELDS = {
 
 REQUIRED_FIELDS = ("invoice_number", "issue_date", "total_amount")
 SERVICE_REQUIRED_FIELDS = {
-    "agua": ("consumption_m3",),
+    "agua": ("meter_number", "consumption_m3"),
     "luz": ("cups", "consumption_kwh", "contracted_power_kw"),
     "gas": ("cups", "consumption_kwh"),
 }
 NUMERIC_FIELDS = {
     "tax_base", "tax_amount", "total_amount", "previous_reading", "current_reading",
     "consumption_m3", "consumption_kwh", "contracted_power_kw", "contracted_power_valley_kw",
+    "meter_size_mm", "water_amount", "sewerage_amount", "sanitation_amount", "vat_rate", "vat_base", "vat_amount",
     "consumption_peak_kwh", "consumption_flat_kwh", "consumption_valley_kwh", "billing_days",
     "fixed_term_amount", "energy_amount", "other_concepts_amount", "electricity_tax_amount",
     "electricity_tax_base", "vat_amount", "vat_base",
@@ -87,6 +97,7 @@ MISSING_LABELS = {
     "total_amount": "total",
     "cups": "CUPS",
     "consumption_m3": "consumo en m³",
+    "meter_number": "contador",
     "consumption_kwh": "consumo en kWh",
     "contracted_power_kw": "potencia contratada",
 }
@@ -102,6 +113,19 @@ def _label_value(text: str, labels: str) -> str:
         return ""
     value = re.sub(r"\s{2,}", " ", match.group(1)).strip(" \t:;-")
     return "" if value.casefold() in {"", "n/a", "no disponible"} else value
+
+
+def _line_label_value(text: str, labels: str) -> str:
+    match = re.search(rf"(?im)^\s*(?:{labels})\s*[:#\-]?\s*([^\r\n]+)", text)
+    return re.sub(r"\s{2,}", " ", match.group(1)).strip(" \t:;-") if match else ""
+
+
+def _water_component_amount(text: str, label: str) -> str:
+    match = re.search(
+        rf"(?im)^\s*{label}(?:\s*\(\d+\))?\s+(\d[\d. ]*,\d{{2}})",
+        text,
+    )
+    return match.group(1).replace(" ", "") if match else ""
 
 
 def _amount_after_label(text: str, labels: str) -> str:
@@ -141,7 +165,9 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
     fields = {key: "" for _, key in (*COMMON_FIELDS, *SERVICE_FIELDS[invoice_type])}
     fields.update({"invoice_type": invoice_type, "provider": provider, "extraction_status": "Revisar", "missing_fields": ""})
 
-    fields["holder"] = _label_value(text, r"titular(?:\s+del\s+contrato)?|cliente")
+    fields["holder"] = _line_label_value(text, r"titular(?:\s+del\s+contrato)?")
+    if not fields["holder"]:
+        fields["holder"] = _line_label_value(text, r"cliente")
     fields["tax_id"] = _label_value(text, r"(?:NIF|CIF|DNI|NIE)(?:\s*/\s*(?:NIF|CIF))?")
     address_label = r"direcci[oó\ufffd]n\s+(?:de(?:l)?\s+)?(?:suministro|punto\s+de\s+suministro)"
     address_match = re.search(
@@ -149,6 +175,11 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
         text,
         flags=re.IGNORECASE,
     )
+    if invoice_type == "agua" and not address_match:
+        address_match = re.search(
+            r"(?im)^\s*direcci[oó\ufffd]n\s*[:#\-]?\s*([^\r\n]*)",
+            text,
+        )
     fields["supply_address"] = address_match.group(1).strip(" \t:;-") if address_match else ""
     if address_match:
         following_line = text[address_match.end():].lstrip("\r\n").splitlines()
@@ -166,7 +197,7 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
     )
     fields["contract_number"] = _label_value(
         text,
-        r"n[.º°\ufffd]\s*(?:de\s+)?contrato|n[uú\ufffd]mero\s+de\s+contrato",
+        r"(?:n[uú\ufffd]?m(?:ero)?\.?|n[.º°\ufffd])\s*(?:de\s+)?contrato",
     )
     fields["access_contract_number"] = _label_value(
         text,
@@ -204,10 +235,50 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
         fields["cups"] = cups.group(1).upper()
 
     if invoice_type == "agua":
-        fields["meter_number"] = _label_value(text, r"(?:n[uú\ufffd]mero\s+de\s+)?contador|n[.º°\ufffd]\s*(?:de\s+)?contador|n[uú\ufffd]m\.\s*contador")
-        fields["previous_reading"] = _amount_after_label(text, r"lectura\s+anterior")
-        fields["current_reading"] = _amount_after_label(text, r"lectura\s+actual|lectura\s+nueva")
-        fields["consumption_m3"] = _amount_with_unit(text, r"consumo(?:\s+de\s+agua)?", r"m[³3]")
+        meter_row = re.search(
+            r"(?im)^\s*(?P<meter>[A-Z0-9]{6,})\s+(?P<size>\d{1,3})\s+"
+            r"(?P<previous_date>\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+"
+            r"(?P<previous>\d[\d.,]*)\s+"
+            r"(?P<current_date>\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+"
+            r"(?P<current>\d[\d.,]*)\s+(?P<consumption>\d[\d.,]*)\s+(?:Real|Estimada|Estimado)\b",
+            text,
+        )
+        if meter_row:
+            values = meter_row.groupdict()
+            fields["meter_number"] = values["meter"]
+            fields["meter_size_mm"] = values["size"]
+            fields["previous_reading_date"] = values["previous_date"]
+            fields["previous_reading"] = values["previous"]
+            fields["current_reading_date"] = values["current_date"]
+            fields["current_reading"] = values["current"]
+            fields["consumption_m3"] = values["consumption"]
+            fields["period_start"] = fields["period_start"] or values["previous_date"]
+            fields["period_end"] = fields["period_end"] or values["current_date"]
+        else:
+            fields["meter_number"] = _line_label_value(
+                text,
+                r"(?:n[uú\ufffd]?m(?:ero)?\.?\s+de\s+)?contador",
+            )
+            fields["previous_reading"] = _amount_after_label(text, r"lectura\s+anterior")
+            fields["current_reading"] = _amount_after_label(text, r"lectura\s+actual|lectura\s+nueva")
+        explicit_consumption = _amount_with_unit(text, r"consumo(?:\s+de\s+agua)?", r"m[³3]")
+        if explicit_consumption:
+            fields["consumption_m3"] = explicit_consumption
+
+        fields["water_amount"] = _water_component_amount(text, r"AGUA")
+        fields["sewerage_amount"] = _water_component_amount(text, r"ALCANTARILLADO")
+        fields["sanitation_amount"] = _water_component_amount(text, r"CANON\s+(?:DE\s+)?SANEAMIENTO")
+        vat_match = re.search(
+            r"(?im)^\s*I\.?\s*V\.?\s*A\.?\s+al\s+(\d{1,2})\s*%\s*"
+            r"BASE\s+IMPONIBLE\s*:?\s*(\d[\d. ]*,\d{2})\s+(\d[\d. ]*,\d{2})",
+            text,
+        )
+        if vat_match:
+            fields["vat_rate"], fields["vat_base"], fields["vat_amount"] = (
+                value.replace(" ", "") for value in vat_match.groups()
+            )
+            fields["tax_base"] = fields["vat_base"]
+            fields["tax_amount"] = fields["vat_amount"]
     else:
         fields["consumption_kwh"] = _amount_with_unit(text, r"(?:consumo|energ[ií]a)(?:\s+total)?", r"kWh")
         fields["tariff"] = _label_value(text, r"tarifa|peaje\s+de\s+acceso")
