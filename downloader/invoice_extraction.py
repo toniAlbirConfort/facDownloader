@@ -113,7 +113,10 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
 
     fields["tax_base"] = _amount_after_label(text, r"base\s+imponible")
     fields["tax_amount"] = _amount_after_label(text, r"(?:total\s+)?impuestos|impuestos\s+totales|IVA")
-    fields["total_amount"] = _amount_after_label(text, r"total\s+a\s+pagar|importe\s+total|total\s+factura|total")
+    fields["total_amount"] = _amount_after_label(
+        text,
+        r"total\s+a\s+pagar|importe\s+total|total\s+factura|(?<![\w])total(?=\s*[:\-])",
+    )
 
     cups = re.search(r"\b([A-Z]{2}\d{16,20}[A-Z]{2})\b", text, flags=re.IGNORECASE)
     if cups and invoice_type in {"luz", "gas"}:

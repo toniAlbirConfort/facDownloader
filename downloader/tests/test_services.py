@@ -168,25 +168,26 @@ class ServiceTests(TestCase):
                 with patch("downloader.services.download_candidate", side_effect=documents), patch("downloader.services._prefetch_imap_messages", return_value=({}, {})):
                     run_download_batch(batch)
 
+                archive_root = download_folder_name(batch)
                 with ZipFile(batch.zip_path) as archive:
                     self.assertEqual(
                         set(archive.namelist()),
                         {
-                            "facturas-2026-10-20/agua/agua.pdf",
-                            "facturas-2026-10-20/agua/facturas-agua.xlsx",
-                            "facturas-2026-10-20/gas/gas.pdf",
-                            "facturas-2026-10-20/gas/facturas-gas.xlsx",
+                            f"{archive_root}/agua/agua.pdf",
+                            f"{archive_root}/agua/facturas-agua.xlsx",
+                            f"{archive_root}/gas/gas.pdf",
+                            f"{archive_root}/gas/facturas-gas.xlsx",
                         },
                     )
                 self.assertTrue(spreadsheet_file_path(batch, "agua").is_file())
                 self.assertTrue(spreadsheet_file_path(batch, "gas").is_file())
                 agua_item = batch.items.get(candidate__invoice_type="agua")
                 self.assertEqual(
-                    download_archive_member_name(agua_item, True, "facturas-2026-10-20"),
-                    "facturas-2026-10-20/agua/agua.pdf",
+                    download_archive_member_name(agua_item, True, archive_root),
+                    f"{archive_root}/agua/agua.pdf",
                 )
                 self.assertEqual(
-                    download_archive_member_name(agua_item, False, "facturas-2026-10-20"),
-                    "facturas-2026-10-20/agua.pdf",
+                    download_archive_member_name(agua_item, False, archive_root),
+                    f"{archive_root}/agua.pdf",
                 )
 
