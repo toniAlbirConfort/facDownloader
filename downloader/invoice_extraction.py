@@ -72,8 +72,25 @@ SERVICE_FIELDS = {
     "gas": (
         ("CUPS", "cups"),
         ("Contador", "meter_number"),
+        ("Distribuidora", "distributor"),
+        ("Tipo de tarifa", "tariff"),
+        ("Tarifa de acceso", "access_tariff"),
+        ("Fecha de lectura anterior", "previous_reading_date"),
+        ("Lectura anterior (m³)", "previous_reading"),
+        ("Fecha de lectura actual", "current_reading_date"),
+        ("Lectura actual (m³)", "current_reading"),
+        ("Consumo (m³)", "consumption_m3"),
+        ("Factor de conversión (kWh/m³)", "conversion_factor_kwh_m3"),
         ("Consumo (kWh)", "consumption_kwh"),
-        ("Tarifa", "tariff"),
+        ("Término fijo (€)", "fixed_term_amount"),
+        ("Energía (€)", "energy_amount"),
+        ("Alquiler de contador (€)", "meter_rental_amount"),
+        ("Impuesto hidrocarburos (€)", "hydrocarbon_tax_amount"),
+        ("Importe ATR (€)", "atr_amount"),
+        ("Otros cargos (€)", "charges_amount"),
+        ("IVA (%)", "vat_rate"),
+        ("Base IVA (€)", "vat_base"),
+        ("IVA (€)", "vat_amount"),
     ),
 }
 
@@ -89,7 +106,8 @@ NUMERIC_FIELDS = {
     "meter_size_mm", "water_amount", "sewerage_amount", "sanitation_amount", "vat_rate", "vat_base", "vat_amount",
     "consumption_peak_kwh", "consumption_flat_kwh", "consumption_valley_kwh", "billing_days",
     "fixed_term_amount", "energy_amount", "other_concepts_amount", "electricity_tax_amount",
-    "electricity_tax_base", "vat_amount", "vat_base",
+    "electricity_tax_base", "vat_amount", "vat_base", "conversion_factor_kwh_m3",
+    "meter_rental_amount", "hydrocarbon_tax_amount", "atr_amount", "charges_amount",
 }
 MISSING_LABELS = {
     "invoice_number": "número de factura",
@@ -204,7 +222,7 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
         r"n[.º°\ufffd]\s*(?:de\s+)?contrato\s+de\s+acceso|n[uú\ufffd]mero\s+de\s+contrato\s+de\s+acceso",
     )
 
-    date_pattern = r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"
+    date_pattern = r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})"
     for key, labels in (
         ("issue_date", r"fecha\s+(?:de\s+)?(?:emisi[oó\ufffd]n|factura)"),
         ("period_start", r"(?:periodo|per[ií\ufffd]odo)\s+(?:de\s+)?(?:consumo\s+)?desde"),
@@ -222,6 +240,22 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
     )
     if period_range:
         fields["period_start"], fields["period_end"] = period_range.group(1), period_range.group(2)
+
+    if invoice_type == "gas":
+        gas_invoice = re.search(
+            rf"fecha\s+y\s+n[.º°\ufffd]?\s*factura\s*:?\s*{date_pattern}\s*/\s*([A-Z0-9-]+)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if gas_invoice:
+            fields["issue_date"], fields["invoice_number"] = gas_invoice.group(1), gas_invoice.group(2)
+        gas_period = re.search(
+            rf"periodo\s+de\s+facturaci[oó\ufffd]n\s*:?\s*(?:del\s+)?{date_pattern}\s+al\s+{date_pattern}",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if gas_period:
+            fields["period_start"], fields["period_end"] = gas_period.group(1), gas_period.group(2)
 
     fields["tax_base"] = _amount_after_label(text, r"base\s+imponible")
     fields["tax_amount"] = _amount_after_label(text, r"(?:total\s+)?impuestos|impuestos\s+totales|IVA")
@@ -276,6 +310,87 @@ def parse_invoice_text(text: str, invoice_type: str, provider: str) -> dict[str,
         if vat_match:
             fields["vat_rate"], fields["vat_base"], fields["vat_amount"] = (
                 value.replace(" ", "") for value in vat_match.groups()
+            )
+            fields["tax_base"] = fields["vat_base"]
+            fields["tax_amount"] = fields["vat_amount"]
+    elif invoice_type == "gas":
+        meter_match = re.search(
+            r"(?:n[.º°\ufffd]?\s*(?:de\s+)?contador|contador\s+n[.º°\ufffd]?)\s*:?\s*([A-Z0-9-]{5,})",
+            text,
+            flags=re.IGNORECASE,
+        )
+        fields["meter_number"] = meter_match.group(1) if meter_match else ""
+        tariff_type = re.search(
+            r"(?im)\btipo\s*:?\s*([^\r\n|]*?)(?=\s+n[.º°\ufffd]?\s*(?:de\s+)?contrato\b|\s*$)",
+            text,
+        )
+        fields["tariff"] = tariff_type.group(1).strip(" \t:;-") if tariff_type else ""
+        access_tariff = re.search(r"tarifa\s+de\s+acceso\s*:?\s*([A-Z0-9.]+)", text, flags=re.IGNORECASE)
+        fields["access_tariff"] = access_tariff.group(1).upper() if access_tariff else ""
+        distributor = re.search(
+            r"(?im)^\s*distribuidora\s*:?\s*([^\r\n|]{2,100})",
+            text,
+        )
+        fields["distributor"] = distributor.group(1).strip(" \t:;-") if distributor else ""
+
+        reading_pattern = (
+            r"lectura\s+(actual|anterior)\s+(?:real|estimada)?\s*"
+            r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(\d[\d., ]*)\s*m[³3]"
+        )
+        for reading in re.finditer(reading_pattern, text, flags=re.IGNORECASE):
+            kind, reading_date, value = reading.groups()
+            prefix = "current" if kind.casefold() == "actual" else "previous"
+            fields[f"{prefix}_reading_date"] = reading_date
+            fields[f"{prefix}_reading"] = value.strip().replace(" ", "")
+
+        fields["consumption_m3"] = _amount_with_unit(text, r"consumo\s+en\s+m[³3]", r"m[³3]")
+        conversion = re.search(
+            r"factor\s+de\s+conversi[oó\ufffd]n[^\d\r\n]{0,24}(\d[\d., ]*)\s*kWh\s*/\s*m[³3]",
+            text,
+            flags=re.IGNORECASE,
+        )
+        fields["conversion_factor_kwh_m3"] = conversion.group(1).replace(" ", "") if conversion else ""
+        fields["consumption_kwh"] = _amount_with_unit(text, r"consumo\s+en\s+kWh", r"kWh")
+        fixed_line = re.search(r"(?im)^\s*t[eé\ufffd]rmino\s+fijo[^\r\n]*", text)
+        if fixed_line:
+            fixed_amounts = re.findall(r"\d[\d. ]*,\d{2}(?=\s*(?:€|$))", fixed_line.group(0))
+            if fixed_amounts:
+                fields["fixed_term_amount"] = fixed_amounts[-1].replace(" ", "")
+        energy_line = re.search(
+            r"(?im)^\s*t[eé\ufffd]rmino\s+energ[ií\ufffd]a[^\r\n]*",
+            text,
+        )
+        if energy_line:
+            energy_amounts = re.findall(r"\d[\d. ]*,\d{2}(?=\s*(?:€|$))", energy_line.group(0))
+            if energy_amounts:
+                fields["energy_amount"] = energy_amounts[-1].replace(" ", "")
+        fields["meter_rental_amount"] = _amount_after_label(text, r"alquiler\s+de\s+contador")
+        hydrocarbon_line = re.search(
+            r"(?im)^\s*impuesto\s+(?:esp\.?\s*)?hidrocarburos[^\r\n]*",
+            text,
+        )
+        if hydrocarbon_line:
+            amounts = re.findall(r"\d[\d. ]*,\d{2}(?=\s*(?:€|$))", hydrocarbon_line.group(0))
+            if amounts:
+                fields["hydrocarbon_tax_amount"] = amounts[-1].replace(" ", "")
+        for key, label in (("atr_amount", r"importe\s+ATR"), ("charges_amount", r"importe\s+cargos")):
+            amount = re.search(
+                rf"{label}\s*:?\s*(\d[\d. ]*,\d{{2}})(?=\s*€|\s+importe|\s*$)",
+                text,
+                flags=re.IGNORECASE,
+            )
+            if amount:
+                fields[key] = amount.group(1).replace(" ", "")
+
+        gas_vat = re.search(
+            r"I\.?\s*V\.?\s*A\.?\s*\(\s*(\d{1,2})\s*%\s*\)[^\r\n]*?"
+            r"(\d[\d. ]*,\d{2})\s+(\d[\d. ]*,\d{2})",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if gas_vat:
+            fields["vat_rate"], fields["vat_base"], fields["vat_amount"] = (
+                value.replace(" ", "") for value in gas_vat.groups()
             )
             fields["tax_base"] = fields["vat_base"]
             fields["tax_amount"] = fields["vat_amount"]
@@ -402,6 +517,8 @@ def build_invoice_workbook(documents: list, invoice_type: str, destination: str 
                 normalized = value.replace(" ", "")
                 if "," in normalized:
                     normalized = normalized.replace(".", "").replace(",", ".")
+                elif re.fullmatch(r"\d{1,3}(?:\.\d{3})+", normalized):
+                    normalized = normalized.replace(".", "")
                 try:
                     value = float(Decimal(normalized))
                 except InvalidOperation:
